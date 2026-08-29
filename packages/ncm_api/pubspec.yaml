@@ -1,0 +1,20 @@
+name: ncm_api
+description: >-
+  Pure-Dart client for the Netease Cloud Music private API. Implements the
+  WEAPI / EAPI / LinuxAPI encryption schemes and typed endpoint wrappers.
+  No Flutter dependency.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  crypto: ^3.0.7
+  http: ^1.6.0
+  pointycastle: ^4.0.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  qr: ^3.0.2
+  test: ^1.25.0

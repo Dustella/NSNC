@@ -1,0 +1,16 @@
+* text=auto
+
+# Cross-platform scripts
+*.sh text eol=lf
+android/gradlew text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets and build tooling
+*.gif binary
+*.icns binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.png binary
+*.jar binary
