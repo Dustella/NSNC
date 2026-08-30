@@ -7,6 +7,7 @@ import 'library_screen.dart';
 import 'login_screen.dart';
 import 'now_playing_bar.dart';
 import 'search_screen.dart';
+import 'settings_screen.dart';
 
 /// Root scaffold: adaptive navigation (bottom bar on narrow, rail on wide)
 /// across Discover / Search / Library, with a persistent mini-player above.
@@ -24,12 +25,14 @@ class _HomeShellState extends State<HomeShell> {
     _Dest('发现', Icons.explore_outlined, Icons.explore),
     _Dest('搜索', Icons.search_outlined, Icons.search),
     _Dest('音乐库', Icons.library_music_outlined, Icons.library_music),
+    _Dest('设置', Icons.settings_outlined, Icons.settings),
   ];
 
   final _pages = const [
     DiscoverScreen(),
     SearchScreen(),
     LibraryScreen(),
+    SettingsScreen(),
   ];
 
   @override
@@ -38,9 +41,7 @@ class _HomeShellState extends State<HomeShell> {
     final body = IndexedStack(index: _index, children: _pages);
 
     return Scaffold(
-      body: SafeArea(
-        child: wide ? _wideLayout(body) : body,
-      ),
+      body: SafeArea(child: wide ? _wideLayout(body) : body),
       bottomNavigationBar: wide
           ? null
           : Column(
@@ -106,8 +107,10 @@ class _RailHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Column(
         children: [
-          const Text('NSNC',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          const Text(
+            'NSNC',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          ),
           const SizedBox(height: 12),
           InkWell(
             borderRadius: BorderRadius.circular(24),
@@ -146,11 +149,13 @@ class _RailHeader extends StatelessWidget {
           content: const Text('确定要退出当前账号吗？'),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                child: const Text('取消')),
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('取消'),
+            ),
             TextButton(
-                onPressed: () => Navigator.pop(c, true),
-                child: const Text('退出')),
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('退出'),
+            ),
           ],
         ),
       );
@@ -158,9 +163,9 @@ class _RailHeader extends StatelessWidget {
         await context.read<AppState>().logout();
       }
     } else {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const LoginScreen()));
     }
   }
 }

@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:ncm_api/ncm_api.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../models/track.dart';
 import '../services/app_state.dart';
 import '../services/player_service.dart';
+import 'lazy_network_image.dart';
 
 /// Search screen: query songs by keyword and play a result from the list.
 class SearchScreen extends StatefulWidget {
@@ -181,16 +181,12 @@ class _AlbumArt extends StatelessWidget {
     );
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
-      child: (url == null || url!.isEmpty)
-          ? placeholder
-          : CachedNetworkImage(
-              imageUrl: url!,
-              width: size,
-              height: size,
-              fit: BoxFit.cover,
-              placeholder: (_, _) => placeholder,
-              errorWidget: (_, _, _) => placeholder,
-            ),
+      child: LazyNetworkImage(
+        url: url,
+        width: size,
+        height: size,
+        placeholder: placeholder,
+      ),
     );
   }
 }

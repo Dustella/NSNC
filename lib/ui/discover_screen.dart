@@ -1,10 +1,10 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/track.dart';
 import '../services/app_state.dart';
 import '../services/player_service.dart';
+import 'lazy_network_image.dart';
 import 'library_screen.dart';
 
 /// Landing page: recommended playlists (works for guests) plus daily
@@ -187,13 +187,11 @@ class _Art extends StatelessWidget {
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: CachedNetworkImage(
-        imageUrl: url!,
+      child: LazyNetworkImage(
+        url: url,
         width: size == double.infinity ? null : size,
         height: size == double.infinity ? null : size,
-        fit: BoxFit.cover,
-        placeholder: (context, url) => placeholder,
-        errorWidget: (context, url, error) => placeholder,
+        placeholder: placeholder,
       ),
     );
   }

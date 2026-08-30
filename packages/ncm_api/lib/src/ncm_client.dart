@@ -21,15 +21,15 @@ enum SongLevel {
 
 extension on SongLevel {
   String get wire => switch (this) {
-        SongLevel.standard => 'standard',
-        SongLevel.higher => 'higher',
-        SongLevel.exhigh => 'exhigh',
-        SongLevel.lossless => 'lossless',
-        SongLevel.hires => 'hires',
-        SongLevel.jyeffect => 'jyeffect',
-        SongLevel.sky => 'sky',
-        SongLevel.jymaster => 'jymaster',
-      };
+    SongLevel.standard => 'standard',
+    SongLevel.higher => 'higher',
+    SongLevel.exhigh => 'exhigh',
+    SongLevel.lossless => 'lossless',
+    SongLevel.hires => 'hires',
+    SongLevel.jyeffect => 'jyeffect',
+    SongLevel.sky => 'sky',
+    SongLevel.jymaster => 'jymaster',
+  };
 }
 
 /// Search result categories (Netease `type` codes).
@@ -47,16 +47,16 @@ enum SearchType {
 
 extension on SearchType {
   int get code => switch (this) {
-        SearchType.song => 1,
-        SearchType.album => 10,
-        SearchType.artist => 100,
-        SearchType.playlist => 1000,
-        SearchType.user => 1002,
-        SearchType.mv => 1004,
-        SearchType.lyric => 1006,
-        SearchType.radio => 1009,
-        SearchType.video => 1014,
-      };
+    SearchType.song => 1,
+    SearchType.album => 10,
+    SearchType.artist => 100,
+    SearchType.playlist => 1000,
+    SearchType.user => 1002,
+    SearchType.mv => 1004,
+    SearchType.lyric => 1006,
+    SearchType.radio => 1009,
+    SearchType.video => 1014,
+  };
 }
 
 /// High-level Netease Cloud Music API client.
@@ -78,8 +78,11 @@ class NcmClient {
     final jar = cookieJar ?? CookieJar();
     // The public jar and the request pipeline MUST share one instance so
     // that Set-Cookie ingestion is visible to subsequent encrypted calls.
-    final request =
-        NcmRequest(cookieJar: jar, device: device, client: httpClient);
+    final request = NcmRequest(
+      cookieJar: jar,
+      device: device,
+      client: httpClient,
+    );
     return NcmClient._(jar, request);
   }
 
@@ -163,9 +166,11 @@ class NcmClient {
     if (captcha != null) {
       data['captcha'] = captcha;
     } else {
-      data['password'] = md5Password ??
-          _md5(password ??
-              (throw ArgumentError('password or captcha required')));
+      data['password'] =
+          md5Password ??
+          _md5(
+            password ?? (throw ArgumentError('password or captcha required')),
+          );
     }
     final resp = await _request.send(
       'POST',
@@ -178,8 +183,10 @@ class NcmClient {
   }
 
   /// Send an SMS captcha to a phone number.
-  Future<Map<String, dynamic>> sendCaptcha(String phone,
-      {String ctcode = '86'}) async {
+  Future<Map<String, dynamic>> sendCaptcha(
+    String phone, {
+    String ctcode = '86',
+  }) async {
     final resp = await _request.send(
       'POST',
       'https://music.163.com/weapi/sms/captcha/sent',
@@ -238,11 +245,7 @@ class NcmClient {
     final resp = await _request.send(
       'POST',
       'https://interface.music.163.com/eapi/song/enhance/player/url/v1',
-      {
-        'ids': jsonEncode(ids),
-        'level': level.wire,
-        'encodeType': 'flac',
-      },
+      {'ids': jsonEncode(ids), 'level': level.wire, 'encodeType': 'flac'},
       crypto: CryptoMode.eapi,
       eapiUrl: '/api/song/enhance/player/url/v1',
     );
@@ -279,14 +282,13 @@ class NcmClient {
 
   /// Song availability / playability check. Returns the raw body
   /// (body['success'] == true when playable).
-  Future<Map<String, dynamic>> checkMusic(int id,
-      {SongLevel level = SongLevel.exhigh}) async {
+  Future<Map<String, dynamic>> checkMusic(
+    int id, {
+    SongLevel level = SongLevel.exhigh,
+  }) async {
     final urls = await songUrl([id], level: level);
     final playable = urls.isNotEmpty && urls.first['url'] != null;
-    return {
-      'success': playable,
-      'message': playable ? 'ok' : '亲爱的,暂无版权',
-    };
+    return {'success': playable, 'message': playable ? 'ok' : '亲爱的,暂无版权'};
   }
 
   // ============================================================
@@ -345,8 +347,8 @@ class NcmClient {
     return (resp.body['playlist'] as List?) ?? const [];
   }
 
-  /// Playlist metadata + trackIds. Returns the raw body; the playlist object
-  /// is body['playlist'].
+  /// Playlist metadata + ordered track ids. Returns the raw body; the
+  /// playlist object is body['playlist'].
   Future<Map<String, dynamic>> playlistDetail(int id) async {
     final resp = await _request.send(
       'POST',
@@ -357,19 +359,38 @@ class NcmClient {
     return resp.body;
   }
 
-  /// All tracks of a playlist, resolved to full song objects (paged).
-  Future<List<dynamic>> playlistTracks(
-    int id, {
-    int? limit,
-    int offset = 0,
-  }) async {
+  /// Ordered ids for a playlist. Metadata is intentionally resolved a page at
+  /// a time with [songDetail] so very large playlists stay bounded.
+  Future<List<int>> playlistTrackIds(int id) async {
     final detail = await playlistDetail(id);
     final trackIds = (detail['playlist']?['trackIds'] as List?) ?? const [];
-    final slice = trackIds.skip(offset);
-    final picked =
-        (limit == null ? slice : slice.take(limit)).map((e) => e['id'] as int);
-    if (picked.isEmpty) return const [];
-    return songDetail(picked.toList());
+    return trackIds
+        .map((item) => ((item as Map)['id'] as num).toInt())
+        .toList(growable: false);
+  }
+
+  /// Full liked-song id set for a user. The liked playlist's normal detail
+  /// route can be truncated, while this account endpoint is authoritative.
+  Future<List<int>> likedSongIds(int uid) async {
+    final resp = await _request.send(
+      'POST',
+      'https://music.163.com/api/song/like/get',
+      {'uid': uid},
+      crypto: CryptoMode.weapi,
+    );
+    final ids = (resp.body['ids'] as List?) ?? const [];
+    return ids.map((id) => (id as num).toInt()).toList(growable: false);
+  }
+
+  /// Full song objects for one playlist page.
+  Future<List<dynamic>> playlistTracks(
+    int id, {
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final ids = await playlistTrackIds(id);
+    if (offset >= ids.length) return const [];
+    return songDetail(ids.skip(offset).take(limit).toList(growable: false));
   }
 
   // ============================================================

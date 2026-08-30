@@ -1,27 +1,25 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart' as mk;
-
 import 'package:ncm_api/ncm_api.dart';
+import 'package:smtc_windows/smtc_windows.dart' as smtc;
+
 import '../models/track.dart';
 
 enum RepeatMode { off, one, all }
 
-/// Cross-platform audio playback service, backed by media_kit (native mpv on
-/// every target). Owns the play queue and resolves Netease stream URLs lazily
-/// per-track, since those URLs are single-song and expire — media_kit is
-/// driven as a single-media player, not with its internal playlist.
-class PlayerService extends ChangeNotifier {
-  PlayerService({
-    required NcmClient client,
-    SongLevel level = SongLevel.exhigh,
-  })
+/// Owns the playback queue and is the single source of truth for the app UI,
+/// Android MediaSession/notification and Windows SMTC.
+class PlayerService extends BaseAudioHandler with ChangeNotifier {
+  PlayerService({required NcmClient client, SongLevel level = SongLevel.exhigh})
+    // ignore: prefer_initializing_formals
+    : _client = client,
       // ignore: prefer_initializing_formals
-      : _client = client,
-        // ignore: prefer_initializing_formals
-        _level = level {
+      _level = level {
     _init();
   }
 
@@ -43,22 +41,28 @@ class PlayerService extends ChangeNotifier {
   bool _buffering = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  final ValueNotifier<Duration> positionListenable = ValueNotifier(
+    Duration.zero,
+  );
   double _volume = 100;
   Object? _lastError;
   bool _advancing = false;
+  smtc.SMTCWindows? _smtc;
+  StreamSubscription<smtc.PressedButton>? _smtcButtons;
+  int? _smtcTrackId;
+  bool? _smtcPlaying;
+  int _smtcPositionSecond = -1;
 
-  final List<StreamSubscription> _subs = [];
+  final List<StreamSubscription<dynamic>> _subs = [];
 
   // --- public state ---
-  List<Track> get queue => List.unmodifiable(_queue);
-  Track? get current =>
-      (_orderPos >= 0 && _orderPos < _shuffleOrder.length)
-          ? _queue[_shuffleOrder[_orderPos]]
-          : null;
-  int get currentIndex =>
-      (_orderPos >= 0 && _orderPos < _shuffleOrder.length)
-          ? _shuffleOrder[_orderPos]
-          : -1;
+  List<Track> get tracks => List.unmodifiable(_queue);
+  Track? get current => (_orderPos >= 0 && _orderPos < _shuffleOrder.length)
+      ? _queue[_shuffleOrder[_orderPos]]
+      : null;
+  int get currentIndex => (_orderPos >= 0 && _orderPos < _shuffleOrder.length)
+      ? _shuffleOrder[_orderPos]
+      : -1;
   bool get isPlaying => _playing;
   bool get isBuffering => _buffering;
   Duration get position => _position;
@@ -70,39 +74,81 @@ class PlayerService extends ChangeNotifier {
   Object? get lastError => _lastError;
 
   void _init() {
-    _subs.add(_player.stream.playing.listen((v) {
-      _playing = v;
-      notifyListeners();
-    }));
-    _subs.add(_player.stream.position.listen((v) {
-      _position = v;
-      notifyListeners();
-    }));
-    _subs.add(_player.stream.duration.listen((v) {
-      _duration = v;
-      notifyListeners();
-    }));
-    _subs.add(_player.stream.buffering.listen((v) {
-      _buffering = v;
-      notifyListeners();
-    }));
-    _subs.add(_player.stream.completed.listen((done) {
-      if (done) _onCompleted();
-    }));
-    _subs.add(_player.stream.error.listen((e) {
-      _lastError = e;
-      notifyListeners();
-    }));
+    _subs.add(
+      _player.stream.playing.listen((value) {
+        _playing = value;
+        _publishState();
+      }),
+    );
+    _subs.add(
+      _player.stream.position.listen((value) {
+        _position = value;
+        final rounded = Duration(seconds: value.inSeconds);
+        if (positionListenable.value != rounded) {
+          positionListenable.value = rounded;
+          _syncSmtcPosition();
+        }
+      }),
+    );
+    _subs.add(
+      _player.stream.duration.listen((value) {
+        _duration = value;
+        _publishState();
+      }),
+    );
+    _subs.add(
+      _player.stream.buffering.listen((value) {
+        _buffering = value;
+        _publishState();
+      }),
+    );
+    _subs.add(
+      _player.stream.completed.listen((done) {
+        if (done) unawaited(_onCompleted());
+      }),
+    );
+    _subs.add(
+      _player.stream.error.listen((error) {
+        _lastError = error;
+        _publishState();
+      }),
+    );
+  }
+
+  Future<void> initializeWindowsSmtc() async {
+    if (!Platform.isWindows || _smtc != null) return;
+    await smtc.SMTCWindows.initialize();
+    final controller = smtc.SMTCWindows(enabled: false);
+    _smtc = controller;
+    _smtcButtons = controller.buttonPressStream.listen((button) {
+      switch (button) {
+        case smtc.PressedButton.play:
+          unawaited(play());
+        case smtc.PressedButton.pause:
+          unawaited(pause());
+        case smtc.PressedButton.next:
+          unawaited(next());
+        case smtc.PressedButton.previous:
+          unawaited(previous());
+        case smtc.PressedButton.stop:
+          unawaited(stop());
+        default:
+          break;
+      }
+    });
+    _syncSmtc(force: true);
   }
 
   // --- queue control ---
 
-  /// Replace the queue and start playing at [startAt].
+  /// Replace the queue and publish the selected track before resolving its URL.
   Future<void> setQueue(List<Track> tracks, {int startAt = 0}) async {
     _queue
       ..clear()
       ..addAll(tracks);
     _rebuildOrder(anchor: startAt);
+    queue.add(_queue.map(_mediaItemFor).toList(growable: false));
+    _publishState();
     await _playCurrent();
   }
 
@@ -113,7 +159,18 @@ class PlayerService extends ChangeNotifier {
   void enqueue(Track track) {
     _queue.add(track);
     _shuffleOrder.add(_queue.length - 1);
-    notifyListeners();
+    queue.add(_queue.map(_mediaItemFor).toList(growable: false));
+    _publishState();
+  }
+
+  void enqueueAll(Iterable<Track> tracks) {
+    final additions = tracks.toList(growable: false);
+    if (additions.isEmpty) return;
+    final start = _queue.length;
+    _queue.addAll(additions);
+    _shuffleOrder.addAll(List.generate(additions.length, (i) => start + i));
+    queue.add(_queue.map(_mediaItemFor).toList(growable: false));
+    _publishState();
   }
 
   Future<void> playAt(int queueIndex) async {
@@ -155,28 +212,78 @@ class PlayerService extends ChangeNotifier {
 
   // --- transport ---
 
-  Future<void> togglePlay() =>
-      _playing ? _player.pause() : _player.play();
+  Future<void> togglePlay() => _playing ? pause() : play();
+
+  @override
   Future<void> play() => _player.play();
+
+  @override
   Future<void> pause() => _player.pause();
-  Future<void> seek(Duration to) => _player.seek(to);
+
+  @override
+  Future<void> seek(Duration position) async {
+    await _player.seek(position);
+    _position = position;
+    positionListenable.value = Duration(seconds: position.inSeconds);
+    _publishState();
+  }
+
+  @override
+  Future<void> skipToNext() => next();
+
+  @override
+  Future<void> skipToPrevious() => previous();
+
+  @override
+  Future<void> skipToQueueItem(int index) => playAt(index);
+
+  @override
+  Future<void> stop() async {
+    await _player.stop();
+    _queue.clear();
+    _shuffleOrder.clear();
+    _orderPos = -1;
+    _playing = false;
+    _position = Duration.zero;
+    positionListenable.value = Duration.zero;
+    _duration = Duration.zero;
+    queue.add(const []);
+    _publishState();
+    await super.stop();
+  }
 
   Future<void> setVolume(double v) async {
     _volume = v.clamp(0, 100);
     await _player.setVolume(_volume);
-    notifyListeners();
+    _publishState();
   }
 
-  void setRepeatMode(RepeatMode mode) {
+  void setAppRepeatMode(RepeatMode mode) {
     _repeat = mode;
-    notifyListeners();
+    _publishState();
+  }
+
+  @override
+  Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
+    setAppRepeatMode(switch (repeatMode) {
+      AudioServiceRepeatMode.one => RepeatMode.one,
+      AudioServiceRepeatMode.all ||
+      AudioServiceRepeatMode.group => RepeatMode.all,
+      _ => RepeatMode.off,
+    });
+  }
+
+  @override
+  Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
+    final enabled = shuffleMode != AudioServiceShuffleMode.none;
+    if (enabled != _shuffle) toggleShuffle();
   }
 
   void toggleShuffle() {
     _shuffle = !_shuffle;
     final anchor = currentIndex;
     _rebuildOrder(anchor: anchor < 0 ? 0 : anchor);
-    notifyListeners();
+    _publishState();
   }
 
   /// Change the requested audio quality. Takes effect on the next resolve;
@@ -225,7 +332,10 @@ class PlayerService extends ChangeNotifier {
     if (track == null) return;
     _advancing = true;
     _lastError = null;
-    notifyListeners();
+    _position = Duration.zero;
+    positionListenable.value = Duration.zero;
+    _duration = track.duration;
+    _publishState();
     try {
       var url = track.playableUrl;
       if (url == null || url.isEmpty) {
@@ -233,21 +343,19 @@ class PlayerService extends ChangeNotifier {
       }
       if (url == null || url.isEmpty) {
         _lastError = '无法获取播放地址（可能需要会员或无版权）: ${track.name}';
-        _advancing = false;
-        notifyListeners();
-        // Skip to next if this was auto-advance.
         return;
       }
-      // Cache resolved URL on the queue entry.
-      final qi = currentIndex;
-      if (qi >= 0) _queue[qi] = track.copyWith(playableUrl: url);
+      final queueIndex = currentIndex;
+      if (queueIndex >= 0) {
+        _queue[queueIndex] = track.copyWith(playableUrl: url);
+      }
       await _player.open(mk.Media(url));
       await _player.play();
-    } catch (e) {
-      _lastError = e;
+    } catch (error) {
+      _lastError = error;
     } finally {
       _advancing = false;
-      notifyListeners();
+      _publishState();
     }
   }
 
@@ -257,12 +365,121 @@ class PlayerService extends ChangeNotifier {
     return data.first['url'] as String?;
   }
 
+  MediaItem _mediaItemFor(Track track) => MediaItem(
+    id: track.id.toString(),
+    title: track.name,
+    album: track.album,
+    artist: track.artistLabel,
+    duration: track.duration,
+    artUri: track.albumArtUrl == null || track.albumArtUrl!.isEmpty
+        ? null
+        : Uri.tryParse(track.albumArtUrl!),
+  );
+
+  void _publishState() {
+    final track = current;
+    mediaItem.add(track == null ? null : _mediaItemFor(track));
+    playbackState.add(
+      PlaybackState(
+        controls: [
+          MediaControl.skipToPrevious,
+          _playing ? MediaControl.pause : MediaControl.play,
+          MediaControl.skipToNext,
+        ],
+        androidCompactActionIndices: const [0, 1, 2],
+        systemActions: const {MediaAction.seek},
+        processingState: _lastError != null
+            ? AudioProcessingState.error
+            : (_advancing || _buffering)
+            ? AudioProcessingState.buffering
+            : track == null
+            ? AudioProcessingState.idle
+            : AudioProcessingState.ready,
+        playing: _playing,
+        updatePosition: _position,
+        queueIndex: currentIndex < 0 ? null : currentIndex,
+        repeatMode: switch (_repeat) {
+          RepeatMode.off => AudioServiceRepeatMode.none,
+          RepeatMode.one => AudioServiceRepeatMode.one,
+          RepeatMode.all => AudioServiceRepeatMode.all,
+        },
+        shuffleMode: _shuffle
+            ? AudioServiceShuffleMode.all
+            : AudioServiceShuffleMode.none,
+        errorMessage: _lastError?.toString(),
+      ),
+    );
+    _syncSmtc(force: true);
+    notifyListeners();
+  }
+
+  void _syncSmtc({bool force = false}) {
+    final controller = _smtc;
+    final track = current;
+    if (controller == null) return;
+    if (track == null) {
+      if (controller.enabled) unawaited(controller.disableSmtc());
+      _smtcTrackId = null;
+      _smtcPlaying = null;
+      _smtcPositionSecond = -1;
+      unawaited(controller.clearMetadata());
+      return;
+    }
+    if (!controller.enabled) unawaited(controller.enableSmtc());
+    if (force || _smtcTrackId != track.id) {
+      _smtcTrackId = track.id;
+      unawaited(
+        controller.updateMetadata(
+          smtc.MusicMetadata(
+            title: track.name,
+            artist: track.artistLabel,
+            album: track.album,
+            albumArtist: track.artistLabel,
+            thumbnail: track.albumArtUrl,
+          ),
+        ),
+      );
+      unawaited(
+        controller.updateTimeline(
+          smtc.PlaybackTimeline(
+            startTimeMs: 0,
+            endTimeMs: _duration.inMilliseconds,
+            positionMs: _position.inMilliseconds,
+            minSeekTimeMs: 0,
+            maxSeekTimeMs: _duration.inMilliseconds,
+          ),
+        ),
+      );
+    }
+    if (force || _smtcPlaying != _playing) {
+      _smtcPlaying = _playing;
+      unawaited(
+        controller.setPlaybackStatus(
+          _playing ? smtc.PlaybackStatus.playing : smtc.PlaybackStatus.paused,
+        ),
+      );
+    }
+  }
+
+  void _syncSmtcPosition() {
+    final controller = _smtc;
+    if (controller == null || _smtcPositionSecond == _position.inSeconds) {
+      return;
+    }
+    _smtcPositionSecond = _position.inSeconds;
+    unawaited(controller.setPosition(_position));
+  }
+
   @override
   void dispose() {
-    for (final s in _subs) {
-      s.cancel();
+    for (final subscription in _subs) {
+      unawaited(subscription.cancel());
     }
-    _player.dispose();
+    unawaited(_smtcButtons?.cancel());
+    final controller = _smtc;
+    if (controller != null) unawaited(controller.dispose());
+    unawaited(_player.dispose());
+    positionListenable.dispose();
     super.dispose();
   }
 }

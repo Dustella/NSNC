@@ -1,9 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:provider/provider.dart';
 
 import '../services/app_state.dart';
 import '../services/player_service.dart';
+import 'lazy_network_image.dart';
 
 /// A single timestamped lyric line parsed from an LRC string.
 class _LyricLine {
@@ -106,10 +106,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ? int.parse(fracRaw) * 10
               : int.parse(fracRaw.padRight(3, '0').substring(0, 3));
         }
-        out.add(_LyricLine(
-          Duration(minutes: min, seconds: sec, milliseconds: ms),
-          text,
-        ));
+        out.add(
+          _LyricLine(
+            Duration(minutes: min, seconds: sec, milliseconds: ms),
+            text,
+          ),
+        );
       }
     }
     out.sort((a, b) => a.time.compareTo(b.time));
@@ -128,7 +130,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       RepeatMode.all => RepeatMode.one,
       RepeatMode.one => RepeatMode.off,
     };
-    p.setRepeatMode(nextMode);
+    p.setAppRepeatMode(nextMode);
   }
 
   @override
@@ -150,17 +152,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     final duration = p.duration;
-    final maxSeconds =
-        duration.inSeconds > 0 ? duration.inSeconds.toDouble() : 1.0;
-    final posSeconds =
-        p.position.inSeconds.clamp(0, duration.inSeconds).toDouble();
-    final sliderValue = (_dragValue ?? posSeconds).clamp(0.0, maxSeconds);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('正在播放'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('正在播放'), centerTitle: true),
       body: SafeArea(
         child: Column(
           children: [
@@ -196,51 +190,80 @@ class _PlayerScreenState extends State<PlayerScreen> {
             if (p.lastError != null) _ErrorBanner(error: p.lastError!, cs: cs),
             const SizedBox(height: 8),
             // Progress slider + times.
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: [
-                  Slider(
-                    min: 0,
-                    max: maxSeconds,
-                    value: sliderValue,
-                    onChanged: duration.inSeconds > 0
-                        ? (v) => setState(() => _dragValue = v)
-                        : null,
-                    onChangeEnd: (v) {
-                      p.seek(Duration(seconds: v.round()));
-                      setState(() => _dragValue = null);
-                    },
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(_clock(Duration(seconds: sliderValue.round())),
-                            style: TextStyle(
-                                fontSize: 12, color: cs.onSurfaceVariant)),
-                        Text(_clock(duration),
-                            style: TextStyle(
-                                fontSize: 12, color: cs.onSurfaceVariant)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _progressView(p, cs, duration),
             const SizedBox(height: 4),
             _Controls(p: p, cs: cs, onRepeat: () => _cycleRepeat(p)),
             const SizedBox(height: 12),
             const Divider(height: 1),
-            Expanded(child: _lyricsView(p, cs)),
+            Expanded(
+              child: ValueListenableBuilder<Duration>(
+                valueListenable: p.positionListenable,
+                builder: (context, position, _) => _lyricsView(position, cs),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _lyricsView(PlayerService p, ColorScheme cs) {
+  Widget _progressView(PlayerService p, ColorScheme cs, Duration duration) {
+    final maxSeconds = duration.inSeconds > 0
+        ? duration.inSeconds.toDouble()
+        : 1.0;
+    return ValueListenableBuilder<Duration>(
+      valueListenable: p.positionListenable,
+      builder: (context, position, _) {
+        final posSeconds = position.inSeconds
+            .clamp(0, duration.inSeconds)
+            .toDouble();
+        final sliderValue = (_dragValue ?? posSeconds).clamp(0.0, maxSeconds);
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              Slider(
+                min: 0,
+                max: maxSeconds,
+                value: sliderValue,
+                onChanged: duration.inSeconds > 0
+                    ? (value) => setState(() => _dragValue = value)
+                    : null,
+                onChangeEnd: (value) {
+                  p.seek(Duration(seconds: value.round()));
+                  setState(() => _dragValue = null);
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _clock(Duration(seconds: sliderValue.round())),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    Text(
+                      _clock(duration),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _lyricsView(Duration position, ColorScheme cs) {
     if (_lyricLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -256,7 +279,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Index of the line whose timestamp is the latest <= current position.
     var activeIndex = -1;
     for (var i = 0; i < _lyrics.length; i++) {
-      if (_lyrics[i].time <= p.position) {
+      if (_lyrics[i].time <= position) {
         activeIndex = i;
       } else {
         break;
@@ -302,21 +325,21 @@ class _Artwork extends StatelessWidget {
           width: side,
           height: side,
           color: cs.surfaceContainerHighest,
-          child: Icon(Icons.music_note, size: side * 0.3, color: cs.onSurfaceVariant),
+          child: Icon(
+            Icons.music_note,
+            size: side * 0.3,
+            color: cs.onSurfaceVariant,
+          ),
         );
         return Center(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: (url == null || url!.isEmpty)
-                ? placeholder
-                : CachedNetworkImage(
-                    imageUrl: url!,
-                    width: side,
-                    height: side,
-                    fit: BoxFit.cover,
-                    placeholder: (_, _) => placeholder,
-                    errorWidget: (_, _, _) => placeholder,
-                  ),
+            child: LazyNetworkImage(
+              url: url,
+              width: side,
+              height: side,
+              placeholder: placeholder,
+            ),
           ),
         );
       },
@@ -417,7 +440,11 @@ class _ErrorBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.warning_amber_rounded, size: 18, color: cs.onErrorContainer),
+          Icon(
+            Icons.warning_amber_rounded,
+            size: 18,
+            color: cs.onErrorContainer,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

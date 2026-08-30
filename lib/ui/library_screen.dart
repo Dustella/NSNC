@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:ncm_api/ncm_api.dart';
 import 'package:provider/provider.dart';
@@ -6,7 +5,10 @@ import 'package:provider/provider.dart';
 import '../models/track.dart';
 import '../services/app_state.dart';
 import '../services/player_service.dart';
+import '../services/playlist_repository.dart';
+import 'lazy_network_image.dart';
 import 'login_screen.dart';
+import 'now_playing_bar.dart';
 
 /// The user's music library: their playlists. Requires a logged-in session.
 class LibraryScreen extends StatefulWidget {
@@ -17,11 +19,17 @@ class LibraryScreen extends StatefulWidget {
 }
 
 class _LibraryScreenState extends State<LibraryScreen> {
-  Future<List<dynamic>>? _playlistsFuture;
+  Future<List<Map<String, dynamic>>>? _playlistsFuture;
   int? _loadedForUid;
 
-  Future<List<dynamic>> _load(AppState appState) {
-    return appState.client.userPlaylists(appState.uid!);
+  Future<List<Map<String, dynamic>>> _load(
+    AppState appState, {
+    bool refresh = false,
+  }) {
+    return context.read<PlaylistRepository>().userPlaylists(
+      appState.uid!,
+      refresh: refresh,
+    );
   }
 
   void _ensureLoaded(AppState appState) {
@@ -47,11 +55,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
       appBar: AppBar(title: const Text('我的音乐库')),
       body: RefreshIndicator(
         onRefresh: () async {
-          final future = _load(appState);
+          final future = _load(appState, refresh: true);
           setState(() => _playlistsFuture = future);
-          await future.catchError((_) => <dynamic>[]);
+          await future.catchError((_) => <Map<String, dynamic>>[]);
         },
-        child: FutureBuilder<List<dynamic>>(
+        child: FutureBuilder<List<Map<String, dynamic>>>(
           future: _playlistsFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -76,8 +84,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
             return ListView.builder(
               itemCount: playlists.length,
               itemBuilder: (context, i) {
-                final json = playlists[i] as Map<String, dynamic>;
-                return _PlaylistTile(json: json);
+                final json = playlists[i];
+                return _PlaylistTile(json: json, uid: appState.uid!);
               },
             );
           },
@@ -121,10 +129,10 @@ class _LoginPrompt extends StatelessWidget {
 }
 
 class _PlaylistTile extends StatelessWidget {
-  const _PlaylistTile({required this.json});
+  const _PlaylistTile({required this.json, required this.uid});
 
   final Map<String, dynamic> json;
-
+  final int uid;
   @override
   Widget build(BuildContext context) {
     final coverUrl = json['coverImgUrl']?.toString();
@@ -142,6 +150,9 @@ class _PlaylistTile extends StatelessWidget {
             builder: (_) => PlaylistDetailScreen(
               playlistId: (json['id'] as num).toInt(),
               title: name,
+              likedSongsUid: (json['specialType'] as num?)?.toInt() == 5
+                  ? uid
+                  : null,
             ),
           ),
         );
@@ -168,104 +179,205 @@ class _PlaylistTile extends StatelessWidget {
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
-      child: CachedNetworkImage(
-        imageUrl: url,
+      child: LazyNetworkImage(
+        url: url,
         width: size,
         height: size,
-        fit: BoxFit.cover,
-        placeholder: (_, _) => placeholder,
-        errorWidget: (_, _, _) => placeholder,
+        placeholder: placeholder,
       ),
     );
   }
 }
 
-/// Tracks of a single playlist, with play-all and per-track playback.
+/// Tracks of a single playlist, loaded in bounded pages.
 class PlaylistDetailScreen extends StatefulWidget {
   const PlaylistDetailScreen({
     super.key,
     required this.playlistId,
     required this.title,
+    this.likedSongsUid,
   });
 
   final int playlistId;
   final String title;
+  final int? likedSongsUid;
 
   @override
   State<PlaylistDetailScreen> createState() => _PlaylistDetailScreenState();
 }
 
 class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
-  bool _loading = true;
+  final ScrollController _scrollController = ScrollController();
+  final List<Track> _tracks = [];
+  bool _loadingInitial = true;
+  bool _loadingMore = false;
+  bool _queueFollowsPlaylist = false;
   String? _error;
-  List<Track> _tracks = const [];
+  String? _loadMoreError;
+  int _nextPage = 0;
+  int _total = 0;
 
   @override
   void initState() {
     super.initState();
-    _fetch();
+    _scrollController.addListener(_loadMoreNearEnd);
+    _loadInitial();
   }
 
-  Future<void> _fetch() async {
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _loadMoreNearEnd() {
+    if (_scrollController.position.extentAfter < 600) _loadMore();
+  }
+
+  Future<void> _loadInitial({bool refresh = false}) async {
     setState(() {
-      _loading = true;
+      _loadingInitial = true;
       _error = null;
+      _loadMoreError = null;
     });
     try {
-      final raw = await context.read<AppState>().client.playlistTracks(
-            widget.playlistId,
-          );
-      final tracks = raw
-          .map((e) => Track.fromJson(e as Map<String, dynamic>))
-          .toList();
+      final page = await context.read<PlaylistRepository>().page(
+        playlistId: widget.playlistId,
+        page: 0,
+        likedSongsUid: widget.likedSongsUid,
+        refresh: refresh,
+      );
+      final tracks = page.songs.map(Track.fromJson).toList(growable: false);
       if (!mounted) return;
       setState(() {
-        _tracks = tracks;
-        _loading = false;
+        _tracks
+          ..clear()
+          ..addAll(tracks);
+        _total = page.total;
+        _nextPage = 1;
+        _loadingInitial = false;
+        _queueFollowsPlaylist = false;
       });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = '加载失败：${e.message}';
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = '加载失败：$e';
-        _loading = false;
-      });
+    } on ApiException catch (error) {
+      _setInitialError('加载失败：${error.message}');
+    } catch (error) {
+      _setInitialError('加载失败：$error');
     }
+  }
+
+  void _setInitialError(String message) {
+    if (!mounted) return;
+    setState(() {
+      _error = message;
+      _loadingInitial = false;
+    });
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingInitial ||
+        _loadingMore ||
+        _nextPage * PlaylistRepository.pageSize >= _total) {
+      return;
+    }
+    final previousTracks = List<Track>.of(_tracks);
+    final player = context.read<PlayerService>();
+    final extendQueue =
+        _queueFollowsPlaylist &&
+        player.tracks.length == previousTracks.length &&
+        _sameTrackIds(player.tracks, previousTracks);
+    setState(() {
+      _loadingMore = true;
+      _loadMoreError = null;
+    });
+    try {
+      final page = await context.read<PlaylistRepository>().page(
+        playlistId: widget.playlistId,
+        page: _nextPage,
+        likedSongsUid: widget.likedSongsUid,
+      );
+      final additions = page.songs.map(Track.fromJson).toList(growable: false);
+      if (!mounted) return;
+      setState(() {
+        _tracks.addAll(additions);
+        _total = page.total;
+        _nextPage++;
+        _loadingMore = false;
+      });
+      if (extendQueue &&
+          player.tracks.length == previousTracks.length &&
+          _sameTrackIds(player.tracks, previousTracks)) {
+        player.enqueueAll(additions);
+      }
+    } on ApiException catch (error) {
+      _setLoadMoreError('加载失败：${error.message}');
+    } catch (error) {
+      _setLoadMoreError('加载失败：$error');
+    }
+  }
+
+  void _setLoadMoreError(String message) {
+    if (!mounted) return;
+    setState(() {
+      _loadMoreError = message;
+      _loadingMore = false;
+    });
+  }
+
+  bool _sameTrackIds(List<Track> left, List<Track> right) {
+    for (var i = 0; i < left.length; i++) {
+      if (left[i].id != right[i].id) return false;
+    }
+    return true;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
-      body: _buildBody(context),
+      appBar: AppBar(
+        title: Text(widget.title),
+        actions: [
+          IconButton(
+            tooltip: '刷新',
+            onPressed: _loadingInitial
+                ? null
+                : () => _loadInitial(refresh: true),
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(child: _buildBody(context)),
+          const NowPlayingBar(),
+        ],
+      ),
     );
   }
 
   Widget _buildBody(BuildContext context) {
-    if (_loading) {
+    if (_loadingInitial) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null) {
-      return _ErrorState(message: _error!, onRetry: _fetch);
+      return _ErrorState(message: _error!, onRetry: _loadInitial);
     }
     if (_tracks.isEmpty) {
       return const _EmptyState(message: '这个歌单还没有歌曲');
     }
 
+    final hasMore = _nextPage * PlaylistRepository.pageSize < _total;
     return Column(
       children: [
         _header(context),
         const Divider(height: 1),
         Expanded(
           child: ListView.builder(
-            itemCount: _tracks.length,
-            itemBuilder: (context, i) {
-              final track = _tracks[i];
+            controller: _scrollController,
+            itemExtent: 64,
+            itemCount: _tracks.length + (hasMore ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index == _tracks.length) return _pageFooter();
+              final track = _tracks[index];
               return ListTile(
                 leading: _art(context, track.albumArtUrl),
                 title: Text(
@@ -279,13 +391,32 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 onTap: () {
-                  context.read<PlayerService>().setQueue(_tracks, startAt: i);
+                  _queueFollowsPlaylist = true;
+                  context.read<PlayerService>().setQueue(
+                    List<Track>.of(_tracks),
+                    startAt: index,
+                  );
                 },
               );
             },
           ),
         ),
       ],
+    );
+  }
+
+  Widget _pageFooter() {
+    if (_loadMoreError != null) {
+      return Center(
+        child: TextButton(onPressed: _loadMore, child: const Text('加载失败，点击重试')),
+      );
+    }
+    return const Center(
+      child: SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
     );
   }
 
@@ -296,16 +427,20 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         children: [
           Expanded(
             child: Text(
-              '共 ${_tracks.length} 首',
+              '已加载 ${_tracks.length} / $_total 首',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
           FilledButton.icon(
             onPressed: () {
-              context.read<PlayerService>().setQueue(_tracks, startAt: 0);
+              _queueFollowsPlaylist = true;
+              context.read<PlayerService>().setQueue(
+                List<Track>.of(_tracks),
+                startAt: 0,
+              );
             },
             icon: const Icon(Icons.play_arrow),
-            label: const Text('播放全部'),
+            label: const Text('播放已加载'),
           ),
         ],
       ),
@@ -331,13 +466,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
-      child: CachedNetworkImage(
-        imageUrl: url,
+      child: LazyNetworkImage(
+        url: url,
         width: size,
         height: size,
-        fit: BoxFit.cover,
-        placeholder: (_, _) => placeholder,
-        errorWidget: (_, _, _) => placeholder,
+        placeholder: placeholder,
       ),
     );
   }
@@ -383,9 +516,7 @@ class _EmptyState extends StatelessWidget {
     return Center(
       child: Text(
         message,
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
     );
   }

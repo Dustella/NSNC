@@ -1,8 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../services/player_service.dart';
+import 'lazy_network_image.dart';
 import 'player_screen.dart';
 
 /// Compact bottom bar showing the currently playing track with quick
@@ -18,24 +18,32 @@ class NowPlayingBar extends StatelessWidget {
     if (track == null) return const SizedBox.shrink();
 
     final cs = Theme.of(context).colorScheme;
-    final progress = p.duration.inMilliseconds > 0
-        ? p.position.inMilliseconds / p.duration.inMilliseconds
-        : 0.0;
+    final duration = p.duration;
 
     return Material(
       color: cs.surfaceContainerHigh,
       child: InkWell(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const PlayerScreen()),
-        ),
+        onTap: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => const PlayerScreen())),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            LinearProgressIndicator(
-              value: progress.clamp(0.0, 1.0),
-              minHeight: 2,
-              backgroundColor: cs.surfaceContainerHighest,
-              color: cs.primary,
+            ExcludeSemantics(
+              child: ValueListenableBuilder<Duration>(
+                valueListenable: p.positionListenable,
+                builder: (context, position, _) {
+                  final progress = duration.inMilliseconds > 0
+                      ? position.inMilliseconds / duration.inMilliseconds
+                      : 0.0;
+                  return LinearProgressIndicator(
+                    value: progress.clamp(0.0, 1.0),
+                    minHeight: 2,
+                    backgroundColor: cs.surfaceContainerHighest,
+                    color: cs.primary,
+                  );
+                },
+              ),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -117,16 +125,12 @@ class _Cover extends StatelessWidget {
     );
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
-      child: (url == null || url!.isEmpty)
-          ? placeholder
-          : CachedNetworkImage(
-              imageUrl: url!,
-              width: size,
-              height: size,
-              fit: BoxFit.cover,
-              placeholder: (_, _) => placeholder,
-              errorWidget: (_, _, _) => placeholder,
-            ),
+      child: LazyNetworkImage(
+        url: url,
+        width: size,
+        height: size,
+        placeholder: placeholder,
+      ),
     );
   }
 }
