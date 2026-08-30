@@ -26,7 +26,7 @@ Map<String, String> coverRequestHeaders(
   if (uri != null &&
       (uri.host == 'music.126.net' || uri.host.endsWith('.music.126.net'))) {
     result.putIfAbsent('Referer', () => 'https://music.163.com/');
-    result.putIfAbsent('User-Agent', () => 'Mozilla/5.0 NSNC/0.0.1');
+    result.putIfAbsent('User-Agent', () => 'Mozilla/5.0 NSNC/0.1.0');
   }
   return result;
 }
