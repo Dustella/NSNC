@@ -4,29 +4,32 @@ import 'dart:math';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 import 'package:ncm_api/ncm_api.dart';
 import 'package:smtc_windows/smtc_windows.dart' as smtc;
 
 import '../models/track.dart';
+import 'audio_store.dart';
+import 'cover_cache_manager.dart';
 
 enum RepeatMode { off, one, all }
 
 /// Owns the playback queue and is the single source of truth for the app UI,
 /// Android MediaSession/notification and Windows SMTC.
 class PlayerService extends BaseAudioHandler with ChangeNotifier {
-  PlayerService({required NcmClient client, SongLevel level = SongLevel.exhigh})
-    // ignore: prefer_initializing_formals
-    : _client = client,
-      // ignore: prefer_initializing_formals
-      _level = level {
+  PlayerService({
+    required NcmClient client,
+    required AudioStore audioStore,
+    SongLevel level = SongLevel.exhigh,
+  }) : this._(client, audioStore, level);
+
+  PlayerService._(this._client, this._audioStore, this._level) {
     _init();
   }
 
-  // Note: initializing formals (`this._client`) are avoided here so the public
-  // parameter names stay unprefixed (`client:`, `level:`) at the call site.
-
   final NcmClient _client;
+  final AudioStore _audioStore;
   final mk.Player _player = mk.Player();
   SongLevel _level;
   final _rng = Random();
@@ -47,11 +50,22 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
   double _volume = 100;
   Object? _lastError;
   bool _advancing = false;
+  bool _downloading = false;
+  double _downloadProgress = 0;
+  int _sourceRevision = 0;
   smtc.SMTCWindows? _smtc;
   StreamSubscription<smtc.PressedButton>? _smtcButtons;
   int? _smtcTrackId;
   bool? _smtcPlaying;
   int _smtcPositionSecond = -1;
+  static const _thumbnailToolbarChannel = MethodChannel(
+    'com.dustella.nsnc/thumbnail_toolbar',
+  );
+  CoverCacheManager? _windowsCoverCache;
+  int? _thumbnailTrackId;
+  bool? _thumbnailPlaying;
+  int _thumbnailRevision = 0;
+  String _thumbnailCoverPath = '';
 
   final List<StreamSubscription<dynamic>> _subs = [];
 
@@ -72,6 +86,12 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
   bool get isShuffle => _shuffle;
   SongLevel get level => _level;
   Object? get lastError => _lastError;
+  bool get isDownloading => _downloading;
+  double get downloadProgress => _downloadProgress;
+  bool get isCurrentDownloaded {
+    final track = current;
+    return track != null && _audioStore.isDownloaded(track.id);
+  }
 
   void _init() {
     _subs.add(
@@ -115,8 +135,22 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
     );
   }
 
-  Future<void> initializeWindowsSmtc() async {
+  Future<void> initializeWindowsSmtc({
+    required CoverCacheManager coverCache,
+  }) async {
     if (!Platform.isWindows || _smtc != null) return;
+    _windowsCoverCache = coverCache;
+    _thumbnailToolbarChannel.setMethodCallHandler((call) async {
+      if (call.method != 'action') return;
+      switch (call.arguments as String?) {
+        case 'previous':
+          await previous();
+        case 'toggle':
+          await togglePlay();
+        case 'next':
+          await next();
+      }
+    });
     await smtc.SMTCWindows.initialize();
     final controller = smtc.SMTCWindows(enabled: false);
     _smtc = controller;
@@ -137,6 +171,7 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
       }
     });
     _syncSmtc(force: true);
+    _syncThumbnailToolbar(force: true);
   }
 
   // --- queue control ---
@@ -286,15 +321,56 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
     _publishState();
   }
 
-  /// Change the requested audio quality. Takes effect on the next resolve;
-  /// re-resolves the current track immediately.
+  /// Change quality immediately while preserving play/pause state and position.
   Future<void> setLevel(SongLevel level) async {
     if (level == _level) return;
     _level = level;
-    if (current != null) {
-      final pos = _position;
-      await _playCurrent();
-      await _player.seek(pos);
+    final track = current;
+    if (track == null) {
+      _publishState();
+      return;
+    }
+    final position = _position;
+    final wasPlaying = _playing;
+    final loaded = await _playCurrent(autoplay: wasPlaying);
+    if (!loaded) return;
+    await _player.seek(position);
+    _position = position;
+    positionListenable.value = Duration(seconds: position.inSeconds);
+    _publishState();
+  }
+
+  Future<void> downloadCurrent() async {
+    final track = current;
+    final level = _level;
+    if (track == null || _downloading || _audioStore.isDownloaded(track.id)) {
+      return;
+    }
+    _downloading = true;
+    _downloadProgress = 0;
+    _publishState();
+    try {
+      final promoted = await _audioStore.promoteCachedDownload(track.id, level);
+      if (promoted != null) return;
+      final url = await _resolveUrl(track.id, level);
+      if (url == null || url.isEmpty) {
+        throw StateError('无法获取下载地址（可能需要会员或无版权）');
+      }
+      await _audioStore.download(
+        trackId: track.id,
+        level: level,
+        url: url,
+        onProgress: (progress) {
+          _downloadProgress = progress;
+          notifyListeners();
+        },
+      );
+    } catch (error) {
+      _lastError = error;
+    } finally {
+      _downloading = false;
+      _downloadProgress = 0;
+      _publishState();
     }
   }
 
@@ -326,10 +402,12 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
     }
   }
 
-  /// Resolve the current track's stream URL and hand it to media_kit.
-  Future<void> _playCurrent() async {
+  /// Prefer permanent downloads, then the selected-quality LRU cache.
+  Future<bool> _playCurrent({bool autoplay = true}) async {
     final track = current;
-    if (track == null) return;
+    if (track == null) return false;
+    final level = _level;
+    final revision = ++_sourceRevision;
     _advancing = true;
     _lastError = null;
     _position = Duration.zero;
@@ -337,30 +415,45 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
     _duration = track.duration;
     _publishState();
     try {
-      var url = track.playableUrl;
-      if (url == null || url.isEmpty) {
-        url = await _resolveUrl(track.id);
+      final local = await _audioStore.localForPlayback(track.id, level);
+      if (revision != _sourceRevision) return false;
+      String? source;
+      if (local != null) {
+        source = Uri.file(local.path).toString();
+      } else {
+        source = await _resolveUrl(track.id, level);
+        if (revision != _sourceRevision) return false;
+        if (source != null && source.isNotEmpty) {
+          unawaited(_cacheAudio(track.id, level, source));
+        }
       }
-      if (url == null || url.isEmpty) {
+      if (source == null || source.isEmpty) {
         _lastError = '无法获取播放地址（可能需要会员或无版权）: ${track.name}';
-        return;
+        return false;
       }
-      final queueIndex = currentIndex;
-      if (queueIndex >= 0) {
-        _queue[queueIndex] = track.copyWith(playableUrl: url);
-      }
-      await _player.open(mk.Media(url));
-      await _player.play();
+      await _player.open(mk.Media(source), play: autoplay);
+      return revision == _sourceRevision;
     } catch (error) {
-      _lastError = error;
+      if (revision == _sourceRevision) _lastError = error;
+      return false;
     } finally {
-      _advancing = false;
-      _publishState();
+      if (revision == _sourceRevision) {
+        _advancing = false;
+        _publishState();
+      }
     }
   }
 
-  Future<String?> _resolveUrl(int id) async {
-    final data = await _client.songUrl([id], level: _level);
+  Future<void> _cacheAudio(int trackId, SongLevel level, String url) async {
+    try {
+      await _audioStore.cacheFromUrl(trackId: trackId, level: level, url: url);
+    } catch (_) {
+      // Playback is already using the network source; caching is best-effort.
+    }
+  }
+
+  Future<String?> _resolveUrl(int id, SongLevel level) async {
+    final data = await _client.songUrl([id], level: level);
     if (data.isEmpty) return null;
     return data.first['url'] as String?;
   }
@@ -410,6 +503,7 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
       ),
     );
     _syncSmtc(force: true);
+    _syncThumbnailToolbar();
     notifyListeners();
   }
 
@@ -470,6 +564,53 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
     unawaited(controller.setPosition(_position));
   }
 
+  void _syncThumbnailToolbar({bool force = false}) {
+    if (!Platform.isWindows || _windowsCoverCache == null) return;
+    final track = current;
+    final trackChanged = _thumbnailTrackId != track?.id;
+    final playingChanged = _thumbnailPlaying != _playing;
+    if (!force && !trackChanged && !playingChanged) return;
+
+    _thumbnailTrackId = track?.id;
+    _thumbnailPlaying = _playing;
+    if (trackChanged) {
+      _thumbnailRevision++;
+      _thumbnailCoverPath = '';
+    }
+    unawaited(_updateThumbnailToolbar());
+    if (trackChanged && track?.albumArtUrl != null) {
+      unawaited(_resolveThumbnailCover(track!, _thumbnailRevision));
+    }
+  }
+
+  Future<void> _resolveThumbnailCover(Track track, int revision) async {
+    final rawUrl = track.albumArtUrl;
+    if (rawUrl == null || rawUrl.isEmpty) return;
+    final uri = Uri.tryParse(rawUrl);
+    final url =
+        uri != null &&
+            uri.scheme == 'http' &&
+            (uri.host == 'music.126.net' || uri.host.endsWith('.music.126.net'))
+        ? uri.replace(scheme: 'https').toString()
+        : rawUrl;
+    try {
+      final file = await _windowsCoverCache!.getSingleFile(url);
+      if (_thumbnailRevision != revision || current?.id != track.id) return;
+      _thumbnailCoverPath = file.path;
+      await _updateThumbnailToolbar();
+    } catch (_) {
+      // The toolbar remains functional when artwork is unavailable.
+    }
+  }
+
+  Future<void> _updateThumbnailToolbar() async {
+    await _thumbnailToolbarChannel.invokeMethod<void>('update', {
+      'enabled': current != null,
+      'playing': _playing,
+      'coverPath': _thumbnailCoverPath,
+    });
+  }
+
   @override
   void dispose() {
     for (final subscription in _subs) {
@@ -478,6 +619,9 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
     unawaited(_smtcButtons?.cancel());
     final controller = _smtc;
     if (controller != null) unawaited(controller.dispose());
+    if (Platform.isWindows) {
+      _thumbnailToolbarChannel.setMethodCallHandler(null);
+    }
     unawaited(_player.dispose());
     positionListenable.dispose();
     super.dispose();

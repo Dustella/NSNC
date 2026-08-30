@@ -38,7 +38,13 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.of(context).size.width >= 720;
-    final body = IndexedStack(index: _index, children: _pages);
+    final body = IndexedStack(
+      index: _index,
+      children: [
+        for (var i = 0; i < _pages.length; i++)
+          ExcludeSemantics(excluding: i != _index, child: _pages[i]),
+      ],
+    );
 
     return Scaffold(
       body: SafeArea(child: wide ? _wideLayout(body) : body),

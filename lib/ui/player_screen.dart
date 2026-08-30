@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart' hide RepeatMode;
+import 'package:ncm_api/ncm_api.dart';
 import 'package:provider/provider.dart';
 
 import '../services/app_state.dart';
@@ -133,6 +134,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
     p.setAppRepeatMode(nextMode);
   }
 
+  Future<void> _showQueue(PlayerService player) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => _QueueSheet(player: player),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.watch<PlayerService>();
@@ -154,7 +164,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final duration = p.duration;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('正在播放'), centerTitle: true),
+      appBar: AppBar(
+        title: const Text('正在播放'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.queue_music),
+            tooltip: '播放列表',
+            onPressed: () => _showQueue(p),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -187,6 +207,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ],
               ),
             ),
+            _PlaybackOptions(player: p),
             if (p.lastError != null) _ErrorBanner(error: p.lastError!, cs: cs),
             const SizedBox(height: 8),
             // Progress slider + times.
@@ -309,6 +330,67 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 }
 
+class _QueueSheet extends StatelessWidget {
+  const _QueueSheet({required this.player});
+
+  final PlayerService player;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: player,
+      builder: (context, _) {
+        final tracks = player.tracks;
+        final currentIndex = player.currentIndex;
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(context).height * 0.72,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Text(
+                    '播放列表 · ${tracks.length} 首',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: tracks.length,
+                    itemBuilder: (context, index) {
+                      final track = tracks[index];
+                      final selected = index == currentIndex;
+                      return ListTile(
+                        selected: selected,
+                        leading: selected
+                            ? const Icon(Icons.graphic_eq)
+                            : Text('${index + 1}'),
+                        title: Text(
+                          track.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          track.artistLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: selected ? null : () => player.playAt(index),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// Large rounded square album art, clamped so tall content still fits.
 class _Artwork extends StatelessWidget {
   const _Artwork({required this.url, required this.cs});
@@ -343,6 +425,73 @@ class _Artwork extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _PlaybackOptions extends StatelessWidget {
+  const _PlaybackOptions({required this.player});
+
+  final PlayerService player;
+
+  static const _labels = {
+    SongLevel.standard: '标准',
+    SongLevel.higher: '较高',
+    SongLevel.exhigh: '极高',
+    SongLevel.lossless: '无损',
+    SongLevel.hires: 'Hi-Res',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.high_quality_outlined, size: 20),
+          const SizedBox(width: 8),
+          DropdownButton<SongLevel>(
+            value: player.level,
+            underline: const SizedBox.shrink(),
+            items: [
+              for (final entry in _labels.entries)
+                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+            ],
+            onChanged: player.isBuffering
+                ? null
+                : (level) {
+                    if (level != null) player.setLevel(level);
+                  },
+          ),
+          const SizedBox(width: 20),
+          if (player.isDownloading)
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                value: player.downloadProgress > 0
+                    ? player.downloadProgress
+                    : null,
+                strokeWidth: 2.5,
+              ),
+            )
+          else
+            IconButton(
+              icon: Icon(
+                player.isCurrentDownloaded
+                    ? Icons.download_done
+                    : Icons.download_outlined,
+              ),
+              color: player.isCurrentDownloaded ? colorScheme.primary : null,
+              tooltip: player.isCurrentDownloaded ? '已下载' : '下载当前歌曲',
+              onPressed: player.isCurrentDownloaded
+                  ? null
+                  : player.downloadCurrent,
+            ),
+        ],
+      ),
     );
   }
 }

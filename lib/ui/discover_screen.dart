@@ -29,7 +29,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     if (loggedIn) {
       try {
         daily = await client.recommendSongs();
-      } catch (_) {/* daily needs login; ignore on failure */}
+      } catch (_) {
+        /* daily needs login; ignore on failure */
+      }
     }
     return _DiscoverData(playlists: playlists, dailySongs: daily);
   }
@@ -51,7 +53,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           future: _future,
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const ExcludeSemantics(
+                child: Center(child: CircularProgressIndicator()),
+              );
             }
             if (snap.hasError) {
               return _ErrorView(
@@ -90,9 +94,9 @@ class _SectionTitle extends StatelessWidget {
   final String text;
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Text(text, style: Theme.of(context).textTheme.titleLarge),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Text(text, style: Theme.of(context).textTheme.titleLarge),
+  );
 }
 
 class _DailySongs extends StatelessWidget {
@@ -101,16 +105,24 @@ class _DailySongs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tracks =
-        songs.map((e) => Track.fromJson(e as Map<String, dynamic>)).toList();
+    final tracks = songs
+        .map((e) => Track.fromJson(e as Map<String, dynamic>))
+        .toList();
     return Column(
       children: [
         for (var i = 0; i < tracks.length && i < 10; i++)
           ListTile(
             leading: _Art(url: tracks[i].albumArtUrl, size: 44),
-            title: Text(tracks[i].name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(tracks[i].artistLabel,
-                maxLines: 1, overflow: TextOverflow.ellipsis),
+            title: Text(
+              tracks[i].name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              tracks[i].artistLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
             onTap: () =>
                 context.read<PlayerService>().setQueue(tracks, startAt: i),
           ),
@@ -155,10 +167,12 @@ class _PlaylistGrid extends StatelessWidget {
                 child: _Art(url: cover, size: double.infinity, radius: 8),
               ),
               const SizedBox(height: 6),
-              Text(name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall),
+              Text(
+                name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ],
           ),
         );
@@ -183,7 +197,9 @@ class _Art extends StatelessWidget {
     );
     if (url == null || url!.isEmpty) {
       return ClipRRect(
-          borderRadius: BorderRadius.circular(radius), child: placeholder);
+        borderRadius: BorderRadius.circular(radius),
+        child: placeholder,
+      );
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
@@ -210,7 +226,10 @@ class _ErrorView extends StatelessWidget {
         Center(child: Text(message, textAlign: TextAlign.center)),
         const SizedBox(height: 12),
         Center(
-          child: FilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
+          child: FilledButton.tonal(
+            onPressed: onRetry,
+            child: const Text('重试'),
+          ),
         ),
       ],
     );

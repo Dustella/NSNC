@@ -8,6 +8,7 @@ class SettingsScreen extends StatelessWidget {
 
   static const _coverOptions = [64, 128, 256, 512, 1024];
   static const _playlistOptions = [16, 32, 64, 128, 256];
+  static const _audioOptions = [1024, 2048, 5120, 10240, 20480];
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +36,13 @@ class SettingsScreen extends StatelessWidget {
             options: _playlistOptions,
             onChanged: settings.setPlaylistLimitMiB,
           ),
+          _LimitTile(
+            title: '音频缓存上限',
+            subtitle: '播放过的音频按最近使用时间淘汰；下载歌曲不计入上限',
+            value: settings.audioLimitMiB,
+            options: _audioOptions,
+            onChanged: settings.setAudioLimitMiB,
+          ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.image_outlined),
@@ -52,6 +60,16 @@ class SettingsScreen extends StatelessWidget {
               context,
               action: settings.clearPlaylists,
               message: '歌单缓存已清空',
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.audio_file_outlined),
+            title: const Text('清空音频缓存'),
+            subtitle: const Text('不会删除手动下载的歌曲'),
+            onTap: () => _clear(
+              context,
+              action: settings.clearAudioCache,
+              message: '音频缓存已清空',
             ),
           ),
         ],
@@ -99,7 +117,14 @@ class _LimitTile extends StatelessWidget {
         value: value,
         items: [
           for (final option in values)
-            DropdownMenuItem(value: option, child: Text('$option MiB')),
+            DropdownMenuItem(
+              value: option,
+              child: Text(
+                option >= 1024 && option % 1024 == 0
+                    ? '${option ~/ 1024} GiB'
+                    : '$option MiB',
+              ),
+            ),
         ],
         onChanged: (next) {
           if (next != null && next != value) onChanged(next);

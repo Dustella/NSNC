@@ -1,6 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import '../services/cover_cache_manager.dart';
 
 /// Cached image used by lazily built list and grid children.
 class LazyNetworkImage extends StatelessWidget {
@@ -23,7 +22,6 @@ class LazyNetworkImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final imageUrl = normalizeCoverUrl(url);
     if (imageUrl == null || imageUrl.isEmpty) return placeholder;
-    logCoverRequest(imageUrl);
     return Image(
       image: CachedNetworkImageProvider(imageUrl),
       width: width,
@@ -33,10 +31,7 @@ class LazyNetworkImage extends StatelessWidget {
         if (wasSynchronouslyLoaded || frame != null) return child;
         return placeholder;
       },
-      errorBuilder: (context, error, stackTrace) {
-        logCoverError(imageUrl, error);
-        return placeholder;
-      },
+      errorBuilder: (context, error, stackTrace) => placeholder,
     );
   }
 }

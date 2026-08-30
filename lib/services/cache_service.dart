@@ -5,34 +5,46 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'audio_store.dart';
 import 'cover_cache_manager.dart';
 
 const _mib = 1024 * 1024;
 
 class CacheSettings extends ChangeNotifier {
-  CacheSettings._(this._prefs, this.coverCache, this.playlistCache);
+  CacheSettings._(
+    this._prefs,
+    this.coverCache,
+    this.playlistCache,
+    this.audioStore,
+  );
 
   static const _coverLimitKey = 'cover_cache_limit_mib_v1';
   static const _playlistLimitKey = 'playlist_cache_limit_mib_v1';
+  static const _audioLimitKey = 'audio_cache_limit_mib_v1';
 
   final SharedPreferences _prefs;
   final CoverCacheManager coverCache;
   final PlaylistCache playlistCache;
+  final AudioStore audioStore;
 
   int get coverLimitMiB => coverCache.maxBytes ~/ _mib;
   int get playlistLimitMiB => playlistCache.maxBytes ~/ _mib;
+  int get audioLimitMiB => audioStore.maxCacheBytes ~/ _mib;
 
   static Future<CacheSettings> open() async {
     final prefs = await SharedPreferences.getInstance();
     final storedCoverLimit = prefs.getInt(_coverLimitKey) ?? 256;
     final storedPlaylistLimit = prefs.getInt(_playlistLimitKey) ?? 64;
+    final storedAudioLimit = prefs.getInt(_audioLimitKey) ?? 5120;
     final coverLimit = storedCoverLimit > 0 ? storedCoverLimit : 256;
     final playlistLimit = storedPlaylistLimit > 0 ? storedPlaylistLimit : 64;
+    final audioLimit = storedAudioLimit > 0 ? storedAudioLimit : 5120;
     final coverCache = CoverCacheManager(maxBytes: coverLimit * _mib);
     final playlistCache = await PlaylistCache.open(
       maxBytes: playlistLimit * _mib,
     );
-    return CacheSettings._(prefs, coverCache, playlistCache);
+    final audioStore = await AudioStore.open(maxCacheBytes: audioLimit * _mib);
+    return CacheSettings._(prefs, coverCache, playlistCache, audioStore);
   }
 
   Future<void> setCoverLimitMiB(int value) async {
@@ -51,6 +63,14 @@ class CacheSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setAudioLimitMiB(int value) async {
+    if (value <= 0) throw ArgumentError.value(value, 'value');
+    audioStore.maxCacheBytes = value * _mib;
+    await _prefs.setInt(_audioLimitKey, value);
+    await audioStore.trimToLimit();
+    notifyListeners();
+  }
+
   Future<void> clearCovers() async {
     await coverCache.emptyCache();
     notifyListeners();
@@ -58,6 +78,11 @@ class CacheSettings extends ChangeNotifier {
 
   Future<void> clearPlaylists() async {
     await playlistCache.clear();
+    notifyListeners();
+  }
+
+  Future<void> clearAudioCache() async {
+    await audioStore.clearCache();
     notifyListeners();
   }
 }
