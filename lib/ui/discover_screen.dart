@@ -193,7 +193,10 @@ class _Art extends StatelessWidget {
       width: size == double.infinity ? null : size,
       height: size == double.infinity ? null : size,
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: const Icon(Icons.music_note, color: Colors.white24),
+      child: Icon(
+        Icons.music_note,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
     );
     if (url == null || url!.isEmpty) {
       return ClipRRect(
