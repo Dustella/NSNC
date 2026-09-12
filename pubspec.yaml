@@ -53,6 +53,7 @@ dependencies:
     path: packages/smtc_windows
   flutter_cache_manager: 3.4.2
   path_provider: 2.1.5
+  file_picker: 12.3.0
 
 dev_dependencies:
   flutter_test:

@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'audio_store.dart';
 import 'cover_cache_manager.dart';
+import 'download_location_service.dart';
 
 const _mib = 1024 * 1024;
 
@@ -16,6 +17,7 @@ class CacheSettings extends ChangeNotifier {
     this.coverCache,
     this.playlistCache,
     this.audioStore,
+    this.downloadLocation,
   );
 
   static const _coverLimitKey = 'cover_cache_limit_mib_v1';
@@ -26,10 +28,29 @@ class CacheSettings extends ChangeNotifier {
   final CoverCacheManager coverCache;
   final PlaylistCache playlistCache;
   final AudioStore audioStore;
+  final DownloadLocationService downloadLocation;
 
   int get coverLimitMiB => coverCache.maxBytes ~/ _mib;
   int get playlistLimitMiB => playlistCache.maxBytes ~/ _mib;
   int get audioLimitMiB => audioStore.maxCacheBytes ~/ _mib;
+  String get downloadLocationLabel => downloadLocation.label;
+  String get downloadLocationHint => downloadLocation.platformHint;
+  bool get canChooseDownloadDirectory =>
+      downloadLocation.canChooseCustomDirectory;
+  bool get usesAndroidDownloadCollections => downloadLocation.isAndroid;
+  bool get usesIOSDocuments => downloadLocation.isIOS;
+  DownloadLocation get selectedDownloadLocation => downloadLocation.location;
+
+  Future<void> setAndroidDownloadLocation(DownloadLocation value) async {
+    await downloadLocation.setAndroidLocation(value);
+    notifyListeners();
+  }
+
+  Future<bool> chooseDownloadDirectory() async {
+    final changed = await downloadLocation.chooseCustomDirectory();
+    if (changed) notifyListeners();
+    return changed;
+  }
 
   static Future<CacheSettings> open() async {
     final prefs = await SharedPreferences.getInstance();
@@ -44,7 +65,14 @@ class CacheSettings extends ChangeNotifier {
       maxBytes: playlistLimit * _mib,
     );
     final audioStore = await AudioStore.open(maxCacheBytes: audioLimit * _mib);
-    return CacheSettings._(prefs, coverCache, playlistCache, audioStore);
+    final downloadLocation = await DownloadLocationService.open(prefs);
+    return CacheSettings._(
+      prefs,
+      coverCache,
+      playlistCache,
+      audioStore,
+      downloadLocation,
+    );
   }
 
   Future<void> setCoverLimitMiB(int value) async {

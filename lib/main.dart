@@ -27,8 +27,11 @@ Future<void> main() async {
   final PlayerService player;
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
     player = await AudioService.init<PlayerService>(
-      builder: () =>
-          PlayerService(client: client, audioStore: cacheSettings.audioStore),
+      builder: () => PlayerService(
+        client: client,
+        audioStore: cacheSettings.audioStore,
+        downloadLocation: cacheSettings.downloadLocation,
+      ),
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.dustella.nsnc.playback',
         androidNotificationChannelName: '音乐播放',
@@ -41,6 +44,7 @@ Future<void> main() async {
     player = PlayerService(
       client: client,
       audioStore: cacheSettings.audioStore,
+      downloadLocation: cacheSettings.downloadLocation,
     );
   }
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {

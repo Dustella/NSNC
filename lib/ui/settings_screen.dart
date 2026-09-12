@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../services/cache_service.dart';
+import '../services/download_location_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -18,10 +19,23 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: Text('缓存', style: TextStyle(fontWeight: FontWeight.w600)),
+          const _SectionTitle('下载'),
+          ListTile(
+            leading: const Icon(Icons.folder_outlined),
+            title: const Text('下载位置'),
+            subtitle: Text(
+              '${settings.downloadLocationLabel}\n${settings.downloadLocationHint}',
+            ),
+            isThreeLine: true,
+            trailing:
+                settings.usesAndroidDownloadCollections ||
+                    settings.canChooseDownloadDirectory
+                ? const Icon(Icons.chevron_right)
+                : const Icon(Icons.info_outline),
+            onTap: () => _changeDownloadLocation(context, settings),
           ),
+          const Divider(indent: 16, endIndent: 16),
+          const _SectionTitle('缓存'),
           _LimitTile(
             title: '封面缓存上限',
             subtitle: '磁盘 LRU；最多同时下载 4 张封面',
@@ -77,6 +91,80 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _changeDownloadLocation(
+    BuildContext context,
+    CacheSettings settings,
+  ) async {
+    try {
+      if (settings.usesAndroidDownloadCollections) {
+        final selected = await showDialog<DownloadLocation>(
+          context: context,
+          builder: (dialogContext) => SimpleDialog(
+            title: const Text('选择下载位置'),
+            children: [
+              ListTile(
+                leading: Icon(
+                  settings.selectedDownloadLocation == DownloadLocation.music
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                ),
+                title: const Text('音乐'),
+                subtitle: const Text('Music/NSNC；其他音乐播放器可以发现'),
+                onTap: () =>
+                    Navigator.pop(dialogContext, DownloadLocation.music),
+              ),
+              ListTile(
+                leading: Icon(
+                  settings.selectedDownloadLocation ==
+                          DownloadLocation.downloads
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                ),
+                title: const Text('下载'),
+                subtitle: const Text('Downloads/NSNC；可在文件管理器中查看'),
+                onTap: () =>
+                    Navigator.pop(dialogContext, DownloadLocation.downloads),
+              ),
+            ],
+          ),
+        );
+        if (selected != null) {
+          await settings.setAndroidDownloadLocation(selected);
+        }
+        return;
+      }
+
+      if (settings.canChooseDownloadDirectory) {
+        await settings.chooseDownloadDirectory();
+        return;
+      }
+
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('iOS 下载位置'),
+          content: const Text(
+            'iOS 不允许普通应用直接写入系统 Music 或 Downloads。'
+            'NSNC 会把歌曲保存到“文件”App > 我的 iPhone > NSNC > Downloads，'
+            '你可以在那里移动或分享文件，无需额外权限。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('无法更改下载位置：$error')));
+    }
+  }
+
   Future<void> _clear(
     BuildContext context, {
     required Future<void> Function() action,
@@ -88,6 +176,24 @@ class SettingsScreen extends StatelessWidget {
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
   }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+    child: Text(
+      text,
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.primary,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
 }
 
 class _LimitTile extends StatelessWidget {

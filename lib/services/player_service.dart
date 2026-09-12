@@ -12,6 +12,7 @@ import 'package:smtc_windows/smtc_windows.dart' as smtc;
 import '../models/track.dart';
 import 'audio_store.dart';
 import 'cover_cache_manager.dart';
+import 'download_location_service.dart';
 
 enum RepeatMode { off, one, all }
 
@@ -21,15 +22,22 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
   PlayerService({
     required NcmClient client,
     required AudioStore audioStore,
+    DownloadLocationService? downloadLocation,
     SongLevel level = SongLevel.exhigh,
-  }) : this._(client, audioStore, level);
+  }) : this._(client, audioStore, downloadLocation, level);
 
-  PlayerService._(this._client, this._audioStore, this._level) {
+  PlayerService._(
+    this._client,
+    this._audioStore,
+    this._downloadLocation,
+    this._level,
+  ) {
     _init();
   }
 
   final NcmClient _client;
   final AudioStore _audioStore;
+  final DownloadLocationService? _downloadLocation;
   final mk.Player _player = mk.Player();
   SongLevel _level;
   final _rng = Random();
@@ -343,28 +351,29 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
   Future<void> downloadCurrent() async {
     final track = current;
     final level = _level;
-    if (track == null || _downloading || _audioStore.isDownloaded(track.id)) {
-      return;
-    }
+    if (track == null || _downloading) return;
     _downloading = true;
     _downloadProgress = 0;
+    _lastError = null;
     _publishState();
     try {
-      final promoted = await _audioStore.promoteCachedDownload(track.id, level);
-      if (promoted != null) return;
-      final url = await _resolveUrl(track.id, level);
-      if (url == null || url.isEmpty) {
-        throw StateError('无法获取下载地址（可能需要会员或无版权）');
+      var file = await _audioStore.promoteCachedDownload(track.id, level);
+      if (file == null) {
+        final url = await _resolveUrl(track.id, level);
+        if (url == null || url.isEmpty) {
+          throw StateError('无法获取下载地址（可能需要会员或无版权）');
+        }
+        file = await _audioStore.download(
+          trackId: track.id,
+          level: level,
+          url: url,
+          onProgress: (progress) {
+            _downloadProgress = progress;
+            notifyListeners();
+          },
+        );
       }
-      await _audioStore.download(
-        trackId: track.id,
-        level: level,
-        url: url,
-        onProgress: (progress) {
-          _downloadProgress = progress;
-          notifyListeners();
-        },
-      );
+      await _downloadLocation?.exportAudio(source: file, track: track);
     } catch (error) {
       _lastError = error;
     } finally {

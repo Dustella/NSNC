@@ -31,4 +31,24 @@ void main() {
       expect(theme.cardTheme.color, scheme.surfaceContainerLow);
     }
   });
+
+  test('uses native Sans families with platform fallbacks', () {
+    final windows = NsncTheme.light(platform: TargetPlatform.windows);
+    final apple = NsncTheme.light(platform: TargetPlatform.macOS);
+    final android = NsncTheme.light(platform: TargetPlatform.android);
+    final linux = NsncTheme.light(platform: TargetPlatform.linux);
+
+    expect(windows.textTheme.bodyMedium?.fontFamily, 'Microsoft YaHei UI');
+    expect(
+      windows.textTheme.bodyMedium?.fontFamilyFallback,
+      contains('Segoe UI'),
+    );
+    expect(apple.textTheme.bodyMedium?.fontFamily, 'PingFang SC');
+    expect(android.textTheme.bodyMedium?.fontFamily, 'MiSans');
+    expect(
+      android.textTheme.bodyMedium?.fontFamilyFallback,
+      contains('Roboto'),
+    );
+    expect(linux.textTheme.bodyMedium?.fontFamily, 'Noto Sans CJK SC');
+  });
 }

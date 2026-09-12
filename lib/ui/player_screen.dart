@@ -2,6 +2,7 @@ import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:ncm_api/ncm_api.dart';
 import 'package:provider/provider.dart';
 
+import '../models/track.dart';
 import '../services/app_state.dart';
 import '../services/player_service.dart';
 import 'lazy_network_image.dart';
@@ -31,7 +32,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int? _lyricTrackId; // track id the current lyrics belong to
   bool _lyricLoading = false;
   List<_LyricLine> _lyrics = const [];
+  List<GlobalKey> _lyricKeys = const [];
   String? _lyricError;
+  bool _showLyrics = false;
+  bool _showVolume = false;
+  int _visibleLyricIndex = -1;
 
   @override
   void initState() {
@@ -52,8 +57,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       setState(() {
         _lyricTrackId = null;
         _lyrics = const [];
+        _lyricKeys = const [];
         _lyricError = null;
         _lyricLoading = false;
+        _visibleLyricIndex = -1;
       });
       return;
     }
@@ -61,7 +68,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _lyricTrackId = id;
       _lyricLoading = true;
       _lyrics = const [];
+      _lyricKeys = const [];
       _lyricError = null;
+      _visibleLyricIndex = -1;
     });
     _fetchLyrics(id);
   }
@@ -72,9 +81,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final body = await client.lyric(id);
       if (!mounted || id != _lyricTrackId) return; // stale / disposed
       final raw = (body['lrc']?['lyric'] ?? '').toString();
+      final lyrics = _parseLrc(raw);
       setState(() {
-        _lyrics = _parseLrc(raw);
+        _lyrics = lyrics;
+        _lyricKeys = List.generate(lyrics.length, (_) => GlobalKey());
         _lyricLoading = false;
+        _visibleLyricIndex = -1;
       });
     } catch (e) {
       if (!mounted || id != _lyricTrackId) return;
@@ -134,6 +146,54 @@ class _PlayerScreenState extends State<PlayerScreen> {
     p.setAppRepeatMode(nextMode);
   }
 
+  void _toggleLyrics() {
+    setState(() {
+      _showLyrics = !_showLyrics;
+      _visibleLyricIndex = -1;
+    });
+  }
+
+  void _toggleVolume() {
+    setState(() => _showVolume = !_showVolume);
+  }
+
+  Widget _mediaPanel(Track track, ColorScheme cs) {
+    return Expanded(
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: _showLyrics
+            ? SizedBox.expand(
+                key: const ValueKey('lyrics-panel'),
+                child: ValueListenableBuilder<Duration>(
+                  valueListenable: context
+                      .read<PlayerService>()
+                      .positionListenable,
+                  builder: (context, position, _) => _lyricsView(position, cs),
+                ),
+              )
+            : Padding(
+                key: const ValueKey('artwork-panel'),
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final side = constraints.maxWidth
+                        .clamp(0.0, constraints.maxHeight)
+                        .clamp(0.0, 260.0);
+                    return Center(
+                      child: SizedBox.square(
+                        dimension: side,
+                        child: _Artwork(url: track.albumArtUrl, cs: cs),
+                      ),
+                    );
+                  },
+                ),
+              ),
+      ),
+    );
+  }
+
   Future<void> _showQueue(PlayerService player) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -178,11 +238,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-              child: _Artwork(url: track.albumArtUrl, cs: cs),
-            ),
-            const SizedBox(height: 20),
+            _mediaPanel(track, cs),
+            const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
@@ -207,21 +264,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ],
               ),
             ),
-            _PlaybackOptions(player: p),
+            _PlaybackOptions(
+              player: p,
+              showLyrics: _showLyrics,
+              showVolume: _showVolume,
+              onToggleLyrics: _toggleLyrics,
+              onToggleVolume: _toggleVolume,
+            ),
             if (p.lastError != null) _ErrorBanner(error: p.lastError!, cs: cs),
-            const SizedBox(height: 8),
-            // Progress slider + times.
-            _progressView(p, cs, duration),
             const SizedBox(height: 4),
-            _Controls(p: p, cs: cs, onRepeat: () => _cycleRepeat(p)),
-            const SizedBox(height: 12),
-            const Divider(height: 1),
-            Expanded(
-              child: ValueListenableBuilder<Duration>(
-                valueListenable: p.positionListenable,
-                builder: (context, position, _) => _lyricsView(position, cs),
+            _progressView(p, cs, duration),
+            ClipRect(
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                child: _showVolume
+                    ? _VolumeControl(player: p, cs: cs)
+                    : const SizedBox(width: double.infinity),
               ),
             ),
+            _Controls(p: p, cs: cs, onRepeat: () => _cycleRepeat(p)),
+            const SizedBox(height: 12),
           ],
         ),
       ),
@@ -307,25 +370,45 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-      itemCount: _lyrics.length,
-      itemBuilder: (context, i) {
-        final active = i == activeIndex;
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Text(
-            _lyrics[i].text,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: active ? 16 : 14,
-              height: 1.3,
-              fontWeight: active ? FontWeight.w700 : FontWeight.w400,
-              color: active ? cs.primary : cs.onSurfaceVariant,
-            ),
-          ),
+    if (activeIndex >= 0 && activeIndex != _visibleLyricIndex) {
+      _visibleLyricIndex = activeIndex;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || activeIndex >= _lyricKeys.length) return;
+        final lineContext = _lyricKeys[activeIndex].currentContext;
+        if (lineContext == null) return;
+        Scrollable.ensureVisible(
+          lineContext,
+          alignment: 0.5,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
         );
-      },
+      });
+    }
+
+    return SingleChildScrollView(
+      key: const ValueKey('lyrics-scroll-view'),
+      padding: const EdgeInsets.fromLTRB(20, 56, 20, 56),
+      child: Column(
+        children: [
+          for (var i = 0; i < _lyrics.length; i++)
+            Padding(
+              key: _lyricKeys[i],
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              child: Text(
+                _lyrics[i].text,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: i == activeIndex ? 16 : 14,
+                  height: 1.35,
+                  fontWeight: i == activeIndex
+                      ? FontWeight.w700
+                      : FontWeight.w400,
+                  color: i == activeIndex ? cs.primary : cs.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -430,9 +513,19 @@ class _Artwork extends StatelessWidget {
 }
 
 class _PlaybackOptions extends StatelessWidget {
-  const _PlaybackOptions({required this.player});
+  const _PlaybackOptions({
+    required this.player,
+    required this.showLyrics,
+    required this.showVolume,
+    required this.onToggleLyrics,
+    required this.onToggleVolume,
+  });
 
   final PlayerService player;
+  final bool showLyrics;
+  final bool showVolume;
+  final VoidCallback onToggleLyrics;
+  final VoidCallback onToggleVolume;
 
   static const _labels = {
     SongLevel.standard: '标准',
@@ -442,39 +535,92 @@ class _PlaybackOptions extends StatelessWidget {
     SongLevel.hires: 'Hi-Res',
   };
 
+  Future<void> _showQualityPicker(BuildContext context) async {
+    final selected = await showModalBottomSheet<SongLevel>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                '选择音质',
+                style: Theme.of(sheetContext).textTheme.titleLarge,
+              ),
+            ),
+            for (final entry in _labels.entries)
+              ListTile(
+                selected: entry.key == player.level,
+                leading: const Icon(Icons.high_quality_outlined),
+                title: Text(entry.value),
+                trailing: entry.key == player.level
+                    ? const Icon(Icons.check_rounded)
+                    : null,
+                onTap: () => Navigator.pop(sheetContext, entry.key),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (selected != null && selected != player.level) {
+      await player.setLevel(selected);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.high_quality_outlined, size: 20),
-          const SizedBox(width: 8),
-          DropdownButton<SongLevel>(
-            value: player.level,
-            underline: const SizedBox.shrink(),
-            items: [
-              for (final entry in _labels.entries)
-                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-            ],
-            onChanged: player.isBuffering
+          TextButton.icon(
+            key: const ValueKey('quality-selector'),
+            icon: const Icon(Icons.high_quality_outlined, size: 20),
+            label: Text(_labels[player.level]!),
+            onPressed: player.isBuffering
                 ? null
-                : (level) {
-                    if (level != null) player.setLevel(level);
-                  },
+                : () => _showQualityPicker(context),
           ),
-          const SizedBox(width: 20),
+          IconButton(
+            key: const ValueKey('lyrics-toggle'),
+            icon: Icon(
+              showLyrics ? Icons.album_outlined : Icons.lyrics_outlined,
+            ),
+            color: showLyrics ? colorScheme.primary : null,
+            tooltip: showLyrics ? '显示封面' : '显示歌词',
+            onPressed: onToggleLyrics,
+          ),
+          IconButton(
+            key: const ValueKey('volume-toggle'),
+            icon: Icon(
+              player.volume == 0
+                  ? Icons.volume_off_outlined
+                  : Icons.volume_up_outlined,
+            ),
+            color: showVolume ? colorScheme.primary : null,
+            tooltip: showVolume ? '收起音量' : '调节音量',
+            onPressed: onToggleVolume,
+          ),
           if (player.isDownloading)
             SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                value: player.downloadProgress > 0
-                    ? player.downloadProgress
-                    : null,
-                strokeWidth: 2.5,
+              width: 48,
+              height: 48,
+              child: Center(
+                child: SizedBox.square(
+                  dimension: 24,
+                  child: CircularProgressIndicator(
+                    value: player.downloadProgress > 0
+                        ? player.downloadProgress
+                        : null,
+                    strokeWidth: 2.5,
+                  ),
+                ),
               ),
             )
           else
@@ -485,11 +631,57 @@ class _PlaybackOptions extends StatelessWidget {
                     : Icons.download_outlined,
               ),
               color: player.isCurrentDownloaded ? colorScheme.primary : null,
-              tooltip: player.isCurrentDownloaded ? '已下载' : '下载当前歌曲',
-              onPressed: player.isCurrentDownloaded
-                  ? null
-                  : player.downloadCurrent,
+              tooltip: player.isCurrentDownloaded ? '重新导出到下载位置' : '下载当前歌曲',
+              onPressed: player.downloadCurrent,
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VolumeControl extends StatelessWidget {
+  const _VolumeControl({required this.player, required this.cs});
+
+  final PlayerService player;
+  final ColorScheme cs;
+
+  @override
+  Widget build(BuildContext context) {
+    final volume = player.volume.clamp(0.0, 100.0);
+    final icon = volume == 0
+        ? Icons.volume_off_outlined
+        : volume < 50
+        ? Icons.volume_down_outlined
+        : Icons.volume_up_outlined;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: cs.onSurfaceVariant),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Slider(
+              key: const ValueKey('volume-slider'),
+              min: 0,
+              max: 100,
+              value: volume,
+              semanticFormatterCallback: (value) => '音量 ${value.round()}%',
+              onChanged: player.setVolume,
+            ),
+          ),
+          SizedBox(
+            width: 40,
+            child: Text(
+              '${volume.round()}%',
+              textAlign: TextAlign.end,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
         ],
       ),
     );

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// NSNC's restrained Material 3 theme.
@@ -9,12 +10,15 @@ abstract final class NsncTheme {
   static const _seed = Color(0xFFC20C0C);
   static const _radius = 12.0;
 
-  static ThemeData light() => _build(Brightness.light);
+  static ThemeData light({TargetPlatform? platform}) =>
+      _build(Brightness.light, platform ?? defaultTargetPlatform);
 
-  static ThemeData dark() => _build(Brightness.dark);
+  static ThemeData dark({TargetPlatform? platform}) =>
+      _build(Brightness.dark, platform ?? defaultTargetPlatform);
 
-  static ThemeData _build(Brightness brightness) {
+  static ThemeData _build(Brightness brightness, TargetPlatform platform) {
     final scheme = _colorScheme(brightness);
+    final fonts = _fontsFor(platform);
 
     final base = ThemeData(
       useMaterial3: true,
@@ -22,7 +26,8 @@ abstract final class NsncTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: scheme.surface,
       canvasColor: scheme.surface,
-      fontFamily: 'sans-serif',
+      fontFamily: fonts.primary,
+      fontFamilyFallback: fonts.fallback,
     );
 
     return base.copyWith(
@@ -178,6 +183,34 @@ abstract final class NsncTheme {
     );
   }
 
+  static _PlatformFonts _fontsFor(TargetPlatform platform) =>
+      switch (platform) {
+        TargetPlatform.windows => const _PlatformFonts('Microsoft YaHei UI', [
+          'Microsoft YaHei',
+          'Segoe UI',
+          'sans-serif',
+        ]),
+        TargetPlatform.iOS || TargetPlatform.macOS => const _PlatformFonts(
+          'PingFang SC',
+          ['SF Pro Text', 'Helvetica Neue', 'sans-serif'],
+        ),
+        TargetPlatform.android => const _PlatformFonts('MiSans', [
+          'Noto Sans CJK SC',
+          'Roboto',
+          'sans-serif',
+        ]),
+        TargetPlatform.linux => const _PlatformFonts('Noto Sans CJK SC', [
+          'Noto Sans',
+          'Ubuntu',
+          'DejaVu Sans',
+          'sans-serif',
+        ]),
+        TargetPlatform.fuchsia => const _PlatformFonts('Roboto', [
+          'Noto Sans',
+          'sans-serif',
+        ]),
+      };
+
   static ColorScheme _colorScheme(Brightness brightness) {
     final base = ColorScheme.fromSeed(seedColor: _seed, brightness: brightness);
 
@@ -203,4 +236,11 @@ abstract final class NsncTheme {
       outlineVariant: const Color(0xFF55413F),
     );
   }
+}
+
+class _PlatformFonts {
+  const _PlatformFonts(this.primary, this.fallback);
+
+  final String primary;
+  final List<String> fallback;
 }
