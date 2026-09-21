@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_miuix/miuix.dart';
 import 'package:ncm_api/ncm_api.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -34,10 +35,10 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('登录'),
-        bottom: TabBar(
+    return MiuixScaffold(
+      topBar: MiuixSmallTopAppBar(
+        title: '登录',
+        bottomContent: TabBar(
           controller: _tabController,
           tabs: const [
             Tab(text: '扫码登录', icon: Icon(Icons.qr_code)),
@@ -45,12 +46,12 @@ class _LoginScreenState extends State<LoginScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [
-          _QrLoginTab(),
-          _PhoneLoginTab(),
-        ],
+      content: (padding) => Padding(
+        padding: padding,
+        child: TabBarView(
+          controller: _tabController,
+          children: const [_QrLoginTab(), _PhoneLoginTab()],
+        ),
       ),
     );
   }
@@ -199,10 +200,16 @@ class _QrLoginTabState extends State<_QrLoginTab> {
             ),
             if (_expired) ...[
               const SizedBox(height: 16),
-              FilledButton.icon(
+              MiuixButton(
                 onPressed: _generate,
-                icon: const Icon(Icons.refresh),
-                label: const Text('刷新二维码'),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.refresh),
+                    SizedBox(width: 8),
+                    Text('刷新二维码'),
+                  ],
+                ),
               ),
             ],
           ],
@@ -242,7 +249,9 @@ class _PhoneLoginTabState extends State<_PhoneLoginTab> {
 
   void _snack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _sendCaptcha() async {
@@ -315,70 +324,52 @@ class _PhoneLoginTabState extends State<_PhoneLoginTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
+          MiuixTextField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(
-              labelText: '手机号',
-              prefixIcon: Icon(Icons.phone),
-              border: OutlineInputBorder(),
-            ),
+            label: '手机号',
+            leadingIcon: const Icon(Icons.phone),
+            singleLine: true,
           ),
           const SizedBox(height: 16),
           if (_useCaptcha)
-            TextField(
+            MiuixTextField(
               controller: _captchaController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: '验证码',
-                prefixIcon: Icon(Icons.sms),
-                border: OutlineInputBorder(),
-              ),
+              label: '验证码',
+              leadingIcon: const Icon(Icons.sms),
+              singleLine: true,
             )
           else
-            TextField(
+            MiuixTextField(
               controller: _passwordController,
               obscureText: true,
-              decoration: const InputDecoration(
-                labelText: '密码',
-                prefixIcon: Icon(Icons.lock),
-                border: OutlineInputBorder(),
+              label: '密码',
+              leadingIcon: const Icon(Icons.lock),
+              singleLine: true,
+            ),
+          SizedBox(
+            width: double.infinity,
+            child: MiuixTextButton(
+              _sendingCaptcha ? '发送中…' : '发送验证码',
+              onPressed: _sendingCaptcha ? null : _sendCaptcha,
+            ),
+          ),
+          if (_useCaptcha) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: MiuixTextButton(
+                '改用密码登录',
+                onPressed: () => setState(() => _useCaptcha = false),
               ),
             ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _sendingCaptcha ? null : _sendCaptcha,
-                  child: _sendingCaptcha
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('发送验证码'),
-                ),
-              ),
-              if (_useCaptcha) ...[
-                const SizedBox(width: 12),
-                TextButton(
-                  onPressed: () => setState(() => _useCaptcha = false),
-                  child: const Text('用密码登录'),
-                ),
-              ],
-            ],
-          ),
+          ],
           const SizedBox(height: 24),
-          FilledButton(
+          MiuixTextButton(
+            _submitting ? '登录中…' : '登录',
             onPressed: _submitting ? null : _login,
-            child: _submitting
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('登录'),
+            colors: MiuixButtonDefaults.buttonColorsPrimary(context),
           ),
         ],
       ),

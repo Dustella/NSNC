@@ -1,16 +1,17 @@
 import 'package:audio_service/audio_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_miuix/miuix.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:ncm_api/ncm_api.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 import 'services/app_state.dart';
-import 'services/player_service.dart';
-import 'services/session_store.dart';
 import 'services/cache_service.dart';
+import 'services/player_service.dart';
 import 'services/playlist_repository.dart';
+import 'services/session_store.dart';
 import 'theme/nsnc_theme.dart';
 import 'ui/home_shell.dart';
 
@@ -74,6 +75,7 @@ class NsncApp extends StatelessWidget {
   final SessionStore store;
   final PlayerService player;
   final CacheSettings cacheSettings;
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -90,13 +92,16 @@ class NsncApp extends StatelessWidget {
           ),
         ),
       ],
-      child: MaterialApp(
-        title: 'NSNC',
-        debugShowCheckedModeBanner: false,
-        theme: NsncTheme.light(),
-        darkTheme: NsncTheme.dark(),
-        themeMode: ThemeMode.system,
-        home: const HomeShell(),
+      child: MiuixSystemTheme(
+        fontWeightAdjustment: 0,
+        child: MaterialApp(
+          title: 'NSNC',
+          debugShowCheckedModeBanner: false,
+          theme: NsncTheme.light(),
+          darkTheme: NsncTheme.dark(),
+          themeMode: ThemeMode.system,
+          home: const HomeShell(),
+        ),
       ),
     );
   }

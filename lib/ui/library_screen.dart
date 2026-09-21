@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_miuix/miuix.dart';
 import 'package:ncm_api/ncm_api.dart';
 import 'package:provider/provider.dart';
 
@@ -51,44 +52,47 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     _ensureLoaded(appState);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('我的音乐库')),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          final future = _load(appState, refresh: true);
-          setState(() => _playlistsFuture = future);
-          await future.catchError((_) => <Map<String, dynamic>>[]);
-        },
-        child: FutureBuilder<List<Map<String, dynamic>>>(
-          future: _playlistsFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              final err = snapshot.error;
-              final msg = err is ApiException
-                  ? '加载失败：${err.message}'
-                  : '加载失败：$err';
-              return _ErrorState(
-                message: msg,
-                onRetry: () => setState(() {
-                  _playlistsFuture = _load(appState);
-                }),
-              );
-            }
-            final playlists = snapshot.data ?? const [];
-            if (playlists.isEmpty) {
-              return const _EmptyState(message: '你还没有任何歌单');
-            }
-            return ListView.builder(
-              itemCount: playlists.length,
-              itemBuilder: (context, i) {
-                final json = playlists[i];
-                return _PlaylistTile(json: json, uid: appState.uid!);
-              },
-            );
+    return MiuixScaffold(
+      topBar: const MiuixTopAppBar(title: '我的音乐库'),
+      content: (padding) => Padding(
+        padding: padding,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            final future = _load(appState, refresh: true);
+            setState(() => _playlistsFuture = future);
+            await future.catchError((_) => <Map<String, dynamic>>[]);
           },
+          child: FutureBuilder<List<Map<String, dynamic>>>(
+            future: _playlistsFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: MiuixCircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                final err = snapshot.error;
+                final msg = err is ApiException
+                    ? '加载失败：${err.message}'
+                    : '加载失败：$err';
+                return _ErrorState(
+                  message: msg,
+                  onRetry: () => setState(() {
+                    _playlistsFuture = _load(appState);
+                  }),
+                );
+              }
+              final playlists = snapshot.data ?? const [];
+              if (playlists.isEmpty) {
+                return const _EmptyState(message: '你还没有任何歌单');
+              }
+              return ListView.builder(
+                itemCount: playlists.length,
+                itemBuilder: (context, i) {
+                  final json = playlists[i];
+                  return _PlaylistTile(json: json, uid: appState.uid!);
+                },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -98,30 +102,33 @@ class _LibraryScreenState extends State<LibraryScreen> {
 class _LoginPrompt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('我的音乐库')),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.library_music_outlined,
-              size: 64,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 16),
-            const Text('登录后查看你的音乐库'),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                );
-              },
-              child: const Text('去登录'),
-            ),
-          ],
+    return MiuixScaffold(
+      topBar: const MiuixTopAppBar(title: '我的音乐库'),
+      content: (padding) => Padding(
+        padding: padding,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.library_music_outlined,
+                size: 64,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(height: 16),
+              const Text('登录后查看你的音乐库'),
+              const SizedBox(height: 16),
+              MiuixTextButton(
+                '去登录',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -332,31 +339,40 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
+    return MiuixScaffold(
+      topBar: MiuixSmallTopAppBar(
+        title: widget.title,
+        navigationIcon: MiuixIconButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Icon(Icons.arrow_back),
+        ),
         actions: [
-          IconButton(
-            tooltip: '刷新',
-            onPressed: _loadingInitial
-                ? null
-                : () => _loadInitial(refresh: true),
-            icon: const Icon(Icons.refresh),
+          Tooltip(
+            message: '刷新',
+            child: MiuixIconButton(
+              onPressed: _loadingInitial
+                  ? null
+                  : () => _loadInitial(refresh: true),
+              child: const Icon(Icons.refresh),
+            ),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(child: _buildBody(context)),
-          const NowPlayingBar(),
-        ],
+      content: (padding) => Padding(
+        padding: padding,
+        child: Column(
+          children: [
+            Expanded(child: _buildBody(context)),
+            const NowPlayingBar(),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildBody(BuildContext context) {
     if (_loadingInitial) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: MiuixCircularProgressIndicator());
     }
     if (_error != null) {
       return _ErrorState(message: _error!, onRetry: _loadInitial);
@@ -369,7 +385,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     return Column(
       children: [
         _header(context),
-        const Divider(height: 1),
+        const MiuixHorizontalDivider(),
         Expanded(
           child: ListView.builder(
             controller: _scrollController,
@@ -407,15 +423,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   Widget _pageFooter() {
     if (_loadMoreError != null) {
-      return Center(
-        child: TextButton(onPressed: _loadMore, child: const Text('加载失败，点击重试')),
-      );
+      return Center(child: MiuixTextButton('加载失败，点击重试', onPressed: _loadMore));
     }
     return const Center(
       child: SizedBox(
         width: 20,
         height: 20,
-        child: CircularProgressIndicator(strokeWidth: 2),
+        child: MiuixCircularProgressIndicator(strokeWidth: 2),
       ),
     );
   }
@@ -431,7 +445,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
-          FilledButton.icon(
+          MiuixButton(
+            colors: MiuixButtonDefaults.buttonColorsPrimary(context),
             onPressed: () {
               _queueFollowsPlaylist = true;
               context.read<PlayerService>().setQueue(
@@ -439,8 +454,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 startAt: 0,
               );
             },
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('播放已加载'),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.play_arrow),
+                SizedBox(width: 6),
+                Text('播放已加载'),
+              ],
+            ),
           ),
         ],
       ),
@@ -499,7 +520,7 @@ class _ErrorState extends StatelessWidget {
             child: Text(message, textAlign: TextAlign.center),
           ),
           const SizedBox(height: 12),
-          OutlinedButton(onPressed: onRetry, child: const Text('重试')),
+          MiuixTextButton('重试', onPressed: onRetry),
         ],
       ),
     );

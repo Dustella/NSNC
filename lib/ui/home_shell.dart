@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_miuix/miuix.dart';
 import 'package:provider/provider.dart';
 
 import '../services/app_state.dart';
@@ -10,7 +11,7 @@ import 'search_screen.dart';
 import 'settings_screen.dart';
 
 /// Root scaffold: adaptive navigation (bottom bar on narrow, rail on wide)
-/// across Discover / Search / Library, with a persistent mini-player above.
+/// across Discover / Search / Library / Settings, with a persistent mini-player.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -37,7 +38,7 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.of(context).size.width >= 720;
+    final wide = MediaQuery.sizeOf(context).width >= 720;
     final body = IndexedStack(
       index: _index,
       children: [
@@ -46,49 +47,54 @@ class _HomeShellState extends State<HomeShell> {
       ],
     );
 
-    return Scaffold(
-      body: SafeArea(child: wide ? _wideLayout(body) : body),
-      bottomNavigationBar: wide
+    return MiuixScaffold(
+      bottomBar: wide
           ? null
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const NowPlayingBar(),
-                NavigationBar(
-                  selectedIndex: _index,
-                  onDestinationSelected: (i) => setState(() => _index = i),
-                  destinations: [
-                    for (final d in _destinations)
-                      NavigationDestination(
-                        icon: Icon(d.icon),
-                        selectedIcon: Icon(d.selectedIcon),
-                        label: d.label,
+                MiuixNavigationBar(
+                  children: [
+                    for (var i = 0; i < _destinations.length; i++)
+                      MiuixNavigationBarItem(
+                        selected: _index == i,
+                        onPressed: () => setState(() => _index = i),
+                        icon: Icon(
+                          _index == i
+                              ? _destinations[i].selectedIcon
+                              : _destinations[i].icon,
+                        ),
+                        label: _destinations[i].label,
                       ),
                   ],
                 ),
               ],
             ),
+      content: (padding) =>
+          Padding(padding: padding, child: wide ? _wideLayout(body) : body),
     );
   }
 
   Widget _wideLayout(Widget body) {
     return Row(
       children: [
-        NavigationRail(
-          selectedIndex: _index,
-          onDestinationSelected: (i) => setState(() => _index = i),
-          labelType: NavigationRailLabelType.all,
-          leading: const _RailHeader(),
-          destinations: [
-            for (final d in _destinations)
-              NavigationRailDestination(
-                icon: Icon(d.icon),
-                selectedIcon: Icon(d.selectedIcon),
-                label: Text(d.label),
+        MiuixNavigationRail(
+          header: const _RailHeader(),
+          children: [
+            for (var i = 0; i < _destinations.length; i++)
+              MiuixNavigationRailItem(
+                selected: _index == i,
+                onPressed: () => setState(() => _index = i),
+                icon: Icon(
+                  _index == i
+                      ? _destinations[i].selectedIcon
+                      : _destinations[i].icon,
+                ),
+                label: _destinations[i].label,
               ),
           ],
         ),
-        const VerticalDivider(width: 1),
         Expanded(
           child: Column(
             children: [
@@ -109,40 +115,37 @@ class _RailHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final loggedIn = app.status == AuthStatus.loggedIn;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Column(
-        children: [
-          const Text(
-            'NSNC',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+    return Column(
+      children: [
+        const Text(
+          'NSNC',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        const SizedBox(height: 12),
+        MiuixSurface(
+          cornerRadius: 24,
+          onPressed: () => _onAccountTap(context, loggedIn),
+          child: CircleAvatar(
+            radius: 20,
+            backgroundImage: (loggedIn && app.avatarUrl != null)
+                ? NetworkImage(app.avatarUrl!)
+                : null,
+            child: (loggedIn && app.avatarUrl != null)
+                ? null
+                : const Icon(Icons.person),
           ),
-          const SizedBox(height: 12),
-          InkWell(
-            borderRadius: BorderRadius.circular(24),
-            onTap: () => _onAccountTap(context, loggedIn),
-            child: CircleAvatar(
-              radius: 20,
-              backgroundImage: (loggedIn && app.avatarUrl != null)
-                  ? NetworkImage(app.avatarUrl!)
-                  : null,
-              child: (loggedIn && app.avatarUrl != null)
-                  ? null
-                  : const Icon(Icons.person),
-            ),
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          width: 72,
+          child: Text(
+            loggedIn ? app.nickname : '未登录',
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11),
           ),
-          const SizedBox(height: 4),
-          SizedBox(
-            width: 72,
-            child: Text(
-              loggedIn ? app.nickname : '未登录',
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -154,14 +157,8 @@ class _RailHeader extends StatelessWidget {
           title: const Text('退出登录'),
           content: const Text('确定要退出当前账号吗？'),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(c, true),
-              child: const Text('退出'),
-            ),
+            MiuixTextButton('取消', onPressed: () => Navigator.pop(c, false)),
+            MiuixTextButton('退出', onPressed: () => Navigator.pop(c, true)),
           ],
         ),
       );

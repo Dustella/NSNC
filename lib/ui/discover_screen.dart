@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_miuix/miuix.dart';
 import 'package:provider/provider.dart';
 
 import '../models/track.dart';
@@ -45,38 +46,41 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       _future = _load();
     }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('发现音乐')),
-      body: RefreshIndicator(
-        onRefresh: () async => setState(() => _future = _load()),
-        child: FutureBuilder<_DiscoverData>(
-          future: _future,
-          builder: (context, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
-              return const ExcludeSemantics(
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            if (snap.hasError) {
-              return _ErrorView(
-                message: '加载失败: ${snap.error}',
-                onRetry: () => setState(() => _future = _load()),
-              );
-            }
-            final data = snap.data!;
-            return ListView(
-              padding: const EdgeInsets.all(12),
-              children: [
-                if (data.dailySongs.isNotEmpty) ...[
-                  const _SectionTitle('每日推荐'),
-                  _DailySongs(songs: data.dailySongs),
-                  const SizedBox(height: 24),
+    return MiuixScaffold(
+      topBar: const MiuixTopAppBar(title: '发现音乐'),
+      content: (padding) => Padding(
+        padding: padding,
+        child: RefreshIndicator(
+          onRefresh: () async => setState(() => _future = _load()),
+          child: FutureBuilder<_DiscoverData>(
+            future: _future,
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const ExcludeSemantics(
+                  child: Center(child: MiuixCircularProgressIndicator()),
+                );
+              }
+              if (snap.hasError) {
+                return _ErrorView(
+                  message: '加载失败: ${snap.error}',
+                  onRetry: () => setState(() => _future = _load()),
+                );
+              }
+              final data = snap.data!;
+              return ListView(
+                padding: const EdgeInsets.all(12),
+                children: [
+                  if (data.dailySongs.isNotEmpty) ...[
+                    const MiuixSmallTitle('每日推荐'),
+                    _DailySongs(songs: data.dailySongs),
+                    const SizedBox(height: 24),
+                  ],
+                  const MiuixSmallTitle('推荐歌单'),
+                  _PlaylistGrid(playlists: data.playlists),
                 ],
-                const _SectionTitle('推荐歌单'),
-                _PlaylistGrid(playlists: data.playlists),
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -87,16 +91,6 @@ class _DiscoverData {
   _DiscoverData({required this.playlists, required this.dailySongs});
   final List<dynamic> playlists;
   final List<dynamic> dailySongs;
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
-  final String text;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8),
-    child: Text(text, style: Theme.of(context).textTheme.titleLarge),
-  );
 }
 
 class _DailySongs extends StatelessWidget {
@@ -111,19 +105,11 @@ class _DailySongs extends StatelessWidget {
     return Column(
       children: [
         for (var i = 0; i < tracks.length && i < 10; i++)
-          ListTile(
-            leading: _Art(url: tracks[i].albumArtUrl, size: 44),
-            title: Text(
-              tracks[i].name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              tracks[i].artistLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            onTap: () =>
+          MiuixBasicComponent(
+            startAction: _Art(url: tracks[i].albumArtUrl, size: 44),
+            title: tracks[i].name,
+            summary: tracks[i].artistLabel,
+            onClick: () =>
                 context.read<PlayerService>().setQueue(tracks, startAt: i),
           ),
       ],
@@ -152,9 +138,9 @@ class _PlaylistGrid extends StatelessWidget {
         final cover = (p['picUrl'] ?? p['coverImgUrl'])?.toString();
         final name = (p['name'] ?? '').toString();
         final id = (p['id'] as num?)?.toInt() ?? 0;
-        return InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => Navigator.of(context).push(
+        return MiuixCard(
+          cornerRadius: 16,
+          onPressed: () => Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => PlaylistDetailScreen(playlistId: id, title: name),
             ),
@@ -164,14 +150,16 @@ class _PlaylistGrid extends StatelessWidget {
             children: [
               AspectRatio(
                 aspectRatio: 1,
-                child: _Art(url: cover, size: double.infinity, radius: 8),
+                child: _Art(url: cover, size: double.infinity, radius: 16),
               ),
-              const SizedBox(height: 6),
-              Text(
-                name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(
+                  name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ),
             ],
           ),
@@ -228,12 +216,7 @@ class _ErrorView extends StatelessWidget {
         const SizedBox(height: 120),
         Center(child: Text(message, textAlign: TextAlign.center)),
         const SizedBox(height: 12),
-        Center(
-          child: FilledButton.tonal(
-            onPressed: onRetry,
-            child: const Text('重试'),
-          ),
-        ),
+        Center(child: MiuixTextButton('重试', onPressed: onRetry)),
       ],
     );
   }
