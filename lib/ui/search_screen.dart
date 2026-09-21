@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_miuix/miuix.dart';
 import 'package:ncm_api/ncm_api.dart';
 import 'package:provider/provider.dart';
 
@@ -40,8 +41,10 @@ class _SearchScreenState extends State<SearchScreen> {
     });
 
     try {
-      final body =
-          await context.read<AppState>().client.search(keywords, limit: 30);
+      final body = await context.read<AppState>().client.search(
+        keywords,
+        limit: 30,
+      );
       final songs = (body['result']?['songs'] as List?) ?? const [];
       final tracks = songs
           .map((e) => Track.fromJson(e as Map<String, dynamic>))
@@ -72,33 +75,32 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: TextField(
-          controller: _controller,
-          autofocus: true,
-          textInputAction: TextInputAction.search,
-          onSubmitted: _search,
-          decoration: const InputDecoration(
-            hintText: '搜索歌曲、歌手、专辑',
-            prefixIcon: Icon(Icons.search),
-            border: InputBorder.none,
+    return MiuixScaffold(
+      topBar: MiuixSmallTopAppBar(
+        title: '搜索',
+        bottomContent: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: MiuixTextField(
+            controller: _controller,
+            label: '搜索歌曲、歌手、专辑',
+            useLabelAsPlaceholder: true,
+            leadingIcon: const Icon(Icons.search),
+            singleLine: true,
+            textInputAction: TextInputAction.search,
+            onSubmitted: _search,
           ),
         ),
       ),
-      body: _buildBody(),
+      content: (padding) => Padding(padding: padding, child: _buildBody()),
     );
   }
 
   Widget _buildBody() {
     switch (_status) {
       case _SearchStatus.idle:
-        return const _CenteredHint(
-          icon: Icons.search,
-          message: '搜索歌曲、歌手、专辑',
-        );
+        return const _CenteredHint(icon: Icons.search, message: '搜索歌曲、歌手、专辑');
       case _SearchStatus.loading:
-        return const Center(child: CircularProgressIndicator());
+        return const Center(child: MiuixCircularProgressIndicator());
       case _SearchStatus.error:
         return _CenteredHint(
           icon: Icons.error_outline,
@@ -106,19 +108,13 @@ class _SearchScreenState extends State<SearchScreen> {
         );
       case _SearchStatus.ready:
         if (_tracks.isEmpty) {
-          return const _CenteredHint(
-            icon: Icons.music_off,
-            message: '未找到结果',
-          );
+          return const _CenteredHint(icon: Icons.music_off, message: '未找到结果');
         }
         return ListView.builder(
           itemCount: _tracks.length,
           itemBuilder: (context, index) {
             final track = _tracks[index];
-            return _SearchResultTile(
-              track: track,
-              onTap: () => _playAt(index),
-            );
+            return _SearchResultTile(track: track, onTap: () => _playAt(index));
           },
         );
     }
@@ -134,33 +130,35 @@ class _SearchResultTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ListTile(
-      onTap: onTap,
-      leading: _AlbumArt(url: track.albumArtUrl),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              track.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+    return MiuixBasicComponent(
+      onClick: onTap,
+      startAction: _AlbumArt(url: track.albumArtUrl),
+      content: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                track.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
-          if (track.fee == 1) ...[
-            const SizedBox(width: 6),
-            _VipChip(color: theme.colorScheme.primary),
+            if (track.fee == 1) ...[
+              const SizedBox(width: 6),
+              _VipChip(color: theme.colorScheme.primary),
+            ],
           ],
-        ],
-      ),
-      subtitle: Text(
-        '${track.artistLabel} · ${track.album}',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: Text(
-        _clock(track.duration),
-        style: theme.textTheme.bodySmall,
-      ),
+        ),
+        Text(
+          '${track.artistLabel} · ${track.album}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
+      endActions: [
+        Text(_clock(track.duration), style: theme.textTheme.bodySmall),
+      ],
     );
   }
 }

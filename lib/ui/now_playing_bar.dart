@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_miuix/miuix.dart';
 import 'package:provider/provider.dart';
 
 import '../services/player_service.dart';
@@ -20,87 +21,83 @@ class NowPlayingBar extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final duration = p.duration;
 
-    return Material(
+    return MiuixSurface(
       color: cs.surfaceContainerHigh,
-      child: InkWell(
-        onTap: () => Navigator.of(
-          context,
-        ).push(MaterialPageRoute<void>(builder: (_) => const PlayerScreen())),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ExcludeSemantics(
-              child: ValueListenableBuilder<Duration>(
-                valueListenable: p.positionListenable,
-                builder: (context, position, _) {
-                  final progress = duration.inMilliseconds > 0
-                      ? position.inMilliseconds / duration.inMilliseconds
-                      : 0.0;
-                  return LinearProgressIndicator(
-                    value: progress.clamp(0.0, 1.0),
-                    minHeight: 2,
-                    backgroundColor: cs.surfaceContainerHighest,
-                    color: cs.primary,
-                  );
-                },
-              ),
+      onPressed: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const PlayerScreen())),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ExcludeSemantics(
+            child: ValueListenableBuilder<Duration>(
+              valueListenable: p.positionListenable,
+              builder: (context, position, _) {
+                final progress = duration.inMilliseconds > 0
+                    ? position.inMilliseconds / duration.inMilliseconds
+                    : 0.0;
+                return MiuixLinearProgressIndicator(
+                  progress: progress.clamp(0.0, 1.0),
+                  height: 2,
+                );
+              },
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Row(
-                children: [
-                  _Cover(url: track.albumArtUrl, cs: cs),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          track.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Row(
+              children: [
+                _Cover(url: track.albumArtUrl, cs: cs),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        track.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
                         ),
-                        Text(
-                          track.artistLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (p.isBuffering)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12),
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
-                    ),
-                  IconButton(
-                    icon: Icon(p.isPlaying ? Icons.pause : Icons.play_arrow),
-                    tooltip: p.isPlaying ? '暂停' : '播放',
-                    onPressed: () => p.togglePlay(),
+                      Text(
+                        track.artistLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.skip_next),
-                    tooltip: '下一首',
-                    onPressed: () => p.next(),
+                ),
+                if (p.isBuffering)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: MiuixCircularProgressIndicator(size: 18),
                   ),
-                ],
-              ),
+                Tooltip(
+                  message: p.isPlaying ? '暂停' : '播放',
+                  child: MiuixIconButton(
+                    onPressed: p.togglePlay,
+                    child: Icon(p.isPlaying ? Icons.pause : Icons.play_arrow),
+                  ),
+                ),
+                Tooltip(
+                  message: '下一首',
+                  child: MiuixIconButton(
+                    onPressed: p.next,
+                    child: const Icon(Icons.skip_next),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
