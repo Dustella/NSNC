@@ -389,7 +389,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         Expanded(
           child: ListView.builder(
             controller: _scrollController,
-            itemExtent: 64,
             itemCount: _tracks.length + (hasMore ? 1 : 0),
             itemBuilder: (context, index) {
               if (index == _tracks.length) return _pageFooter();
