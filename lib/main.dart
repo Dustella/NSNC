@@ -100,6 +100,10 @@ class NsncApp extends StatelessWidget {
           theme: NsncTheme.light(),
           darkTheme: NsncTheme.dark(),
           themeMode: ThemeMode.system,
+          builder: (context, child) => Material(
+            type: MaterialType.transparency,
+            child: child ?? const SizedBox.shrink(),
+          ),
           home: const HomeShell(),
         ),
       ),

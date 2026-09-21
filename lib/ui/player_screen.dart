@@ -464,22 +464,13 @@ class _QueueSheet extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final track = tracks[index];
                       final selected = index == currentIndex;
-                      return ListTile(
-                        selected: selected,
-                        leading: selected
+                      return MiuixBasicComponent(
+                        startAction: selected
                             ? const Icon(Icons.graphic_eq)
                             : Text('${index + 1}'),
-                        title: Text(
-                          track.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          track.artistLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        onTap: selected ? null : () => player.playAt(index),
+                        title: track.name,
+                        summary: track.artistLabel,
+                        onClick: selected ? () {} : () => player.playAt(index),
                       );
                     },
                   ),
@@ -571,14 +562,12 @@ class _PlaybackOptions extends StatelessWidget {
               ),
             ),
             for (final entry in _labels.entries)
-              ListTile(
+              MiuixRadioButtonPreference(
+                title: entry.value,
                 selected: entry.key == player.level,
-                leading: const Icon(Icons.high_quality_outlined),
-                title: Text(entry.value),
-                trailing: entry.key == player.level
-                    ? const Icon(Icons.check_rounded)
-                    : null,
-                onTap: () => Navigator.pop(sheetContext, entry.key),
+                startAction: const Icon(Icons.high_quality_outlined),
+                radioButtonLocation: MiuixRadioButtonLocation.end,
+                onClick: () => Navigator.pop(sheetContext, entry.key),
               ),
             const SizedBox(height: 8),
           ],

@@ -146,11 +146,11 @@ class _PlaylistTile extends StatelessWidget {
     final name = json['name']?.toString() ?? '未命名歌单';
     final trackCount = (json['trackCount'] as num?)?.toInt() ?? 0;
 
-    return ListTile(
-      leading: _cover(context, coverUrl),
-      title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text('$trackCount 首'),
-      onTap: () {
+    return MiuixBasicComponent(
+      startAction: _cover(context, coverUrl),
+      title: name,
+      summary: '$trackCount 首',
+      onClick: () {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -394,19 +394,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             itemBuilder: (context, index) {
               if (index == _tracks.length) return _pageFooter();
               final track = _tracks[index];
-              return ListTile(
-                leading: _art(context, track.albumArtUrl),
-                title: Text(
-                  track.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  track.artistLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                onTap: () {
+              return MiuixBasicComponent(
+                startAction: _art(context, track.albumArtUrl),
+                title: track.name,
+                summary: track.artistLabel,
+                onClick: () {
                   _queueFollowsPlaylist = true;
                   context.read<PlayerService>().setQueue(
                     List<Track>.of(_tracks),
