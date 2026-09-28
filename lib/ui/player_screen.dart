@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter_miuix/miuix.dart';
 import 'package:ncm_api/ncm_api.dart';
@@ -5,14 +6,19 @@ import 'package:provider/provider.dart';
 
 import '../models/track.dart';
 import '../services/app_state.dart';
+import '../services/library_services.dart';
 import '../services/player_service.dart';
+import '../services/ui_preferences.dart';
 import 'lazy_network_image.dart';
+import 'widgets/common.dart';
+import 'widgets/track_widgets.dart';
 
 /// A single timestamped lyric line parsed from an LRC string.
 class _LyricLine {
-  const _LyricLine(this.time, this.text);
+  const _LyricLine(this.time, this.text, [this.translation]);
   final Duration time;
   final String text;
+  final String? translation;
 }
 
 /// Full-screen now-playing view: large album art, track metadata, a scrubbable
@@ -82,7 +88,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final body = await client.lyric(id);
       if (!mounted || id != _lyricTrackId) return; // stale / disposed
       final raw = (body['lrc']?['lyric'] ?? '').toString();
-      final lyrics = _parseLrc(raw);
+      final translated = {
+        for (final line in _parseLrc(
+          (body['tlyric']?['lyric'] ?? '').toString(),
+        ))
+          line.time.inMilliseconds ~/ 10: line.text,
+      };
+      final lyrics = [
+        for (final line in _parseLrc(raw))
+          _LyricLine(
+            line.time,
+            line.text,
+            translated[line.time.inMilliseconds ~/ 10],
+          ),
+      ];
       setState(() {
         _lyrics = lyrics;
         _lyricKeys = List.generate(lyrics.length, (_) => GlobalKey());
@@ -181,7 +200,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   builder: (context, constraints) {
                     final side = constraints.maxWidth
                         .clamp(0.0, constraints.maxHeight)
-                        .clamp(0.0, 260.0);
+                        .clamp(0.0, 400.0);
                     return Center(
                       child: SizedBox.square(
                         dimension: side,
@@ -232,20 +251,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     final duration = p.duration;
+    final prefs = context.watch<UiPreferences>();
 
-    return MiuixScaffold(
+    final scaffold = MiuixScaffold(
+      containerColor: Colors.transparent,
       topBar: MiuixSmallTopAppBar(
         title: '正在播放',
-        navigationIcon: MiuixIconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Icon(Icons.arrow_back),
+        color: Colors.transparent,
+        navigationIcon: Tooltip(
+          message: '返回',
+          child: MiuixIconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Icon(Icons.keyboard_arrow_down_rounded, size: 30),
+          ),
         ),
         actions: [
           Tooltip(
             message: '播放列表',
             child: MiuixIconButton(
               onPressed: () => _showQueue(p),
-              child: const Icon(Icons.queue_music),
+              child: const Icon(Icons.queue_music_rounded),
+            ),
+          ),
+          Tooltip(
+            message: '更多',
+            child: MiuixIconButton(
+              onPressed: () => showTrackActions(context, track),
+              child: const Icon(Icons.more_vert_rounded),
             ),
           ),
         ],
@@ -255,31 +287,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         child: Column(
           children: [
             _mediaPanel(track, cs),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                children: [
-                  Text(
-                    track.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    track.album.isEmpty
-                        ? track.artistLabel
-                        : '${track.artistLabel} · ${track.album}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: cs.onSurfaceVariant),
-                  ),
-                ],
-              ),
-            ),
+            const SizedBox(height: 16),
+            _TitleRow(track: track),
+            const SizedBox(height: 4),
             _PlaybackOptions(
               player: p,
               showLyrics: _showLyrics,
@@ -304,6 +314,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ],
         ),
       ),
+    );
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: switch (prefs.playerBackground) {
+            PlayerBackground.blurredCover => BlurredCover(
+              url: track.albumArtUrl,
+              sigma: 60,
+            ),
+            PlayerBackground.gradient => _CoverGradient(url: track.albumArtUrl),
+            PlayerBackground.plain => ColoredBox(color: cs.surface),
+          },
+        ),
+        scaffold,
+      ],
     );
   }
 
@@ -404,25 +430,52 @@ class _PlayerScreenState extends State<PlayerScreen> {
       });
     }
 
+    final prefs = context.watch<UiPreferences>();
+    final scale = prefs.lyricScale;
     return SingleChildScrollView(
       key: const ValueKey('lyrics-scroll-view'),
-      padding: const EdgeInsets.fromLTRB(20, 56, 20, 56),
+      padding: const EdgeInsets.fromLTRB(24, 56, 24, 56),
       child: Column(
         children: [
           for (var i = 0; i < _lyrics.length; i++)
             Padding(
               key: _lyricKeys[i],
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              child: Text(
-                _lyrics[i].text,
+              padding: EdgeInsets.symmetric(vertical: 8 * scale),
+              child: AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: i == activeIndex ? 16 : 14,
+                  fontSize: (i == activeIndex ? 19 : 16) * scale,
                   height: 1.35,
+                  fontFamily: DefaultTextStyle.of(context).style.fontFamily,
+                  fontFamilyFallback: DefaultTextStyle.of(
+                    context,
+                  ).style.fontFamilyFallback,
                   fontWeight: i == activeIndex
-                      ? FontWeight.w700
-                      : FontWeight.w400,
-                  color: i == activeIndex ? cs.primary : cs.onSurfaceVariant,
+                      ? FontWeight.w800
+                      : FontWeight.w500,
+                  color: i == activeIndex
+                      ? cs.primary
+                      : cs.onSurfaceVariant.withValues(alpha: 0.75),
+                ),
+                child: Column(
+                  children: [
+                    Text(_lyrics[i].text, textAlign: TextAlign.center),
+                    if (prefs.showTranslation &&
+                        _lyrics[i].translation != null &&
+                        _lyrics[i].translation!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          _lyrics[i].translation!,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13 * scale,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -470,6 +523,20 @@ class _QueueSheet extends StatelessWidget {
                             : Text('${index + 1}'),
                         title: track.name,
                         summary: track.artistLabel,
+                        endActions: selected
+                            ? null
+                            : [
+                                Tooltip(
+                                  message: '从播放列表移除',
+                                  child: MiuixIconButton(
+                                    onPressed: () => player.removeAt(index),
+                                    child: const Icon(
+                                      Icons.close_rounded,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ),
+                              ],
                         onClick: selected ? () {} : () => player.playAt(index),
                       );
                     },
@@ -495,7 +562,7 @@ class _Artwork extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final side = constraints.maxWidth.clamp(0.0, 260.0);
+        final side = constraints.maxWidth.clamp(0.0, 400.0);
         final placeholder = Container(
           width: side,
           height: side,
@@ -507,13 +574,29 @@ class _Artwork extends StatelessWidget {
           ),
         );
         return Center(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: LazyNetworkImage(
-              url: url,
-              width: side,
-              height: side,
-              placeholder: placeholder,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(
+                coverRadiusOf(context, scale: 1.6),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.22),
+                  blurRadius: 30,
+                  offset: const Offset(0, 14),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(
+                coverRadiusOf(context, scale: 1.6),
+              ),
+              child: LazyNetworkImage(
+                url: sizedCoverUrl(url, 800),
+                width: side,
+                height: side,
+                placeholder: placeholder,
+              ),
             ),
           ),
         );
@@ -836,6 +919,132 @@ class _ErrorBanner extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Song title and artists, left aligned, with the like button on the right.
+class _TitleRow extends StatelessWidget {
+  const _TitleRow({required this.track});
+
+  final Track track;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final likes = context.watch<LikeService>();
+    final liked = likes.isLiked(track.id);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  track.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  track.album.isEmpty
+                      ? track.artistLabel
+                      : '${track.artistLabel} · ${track.album}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          if (likes.ready)
+            Tooltip(
+              message: liked ? '取消喜欢' : '喜欢',
+              child: MiuixIconButton(
+                onPressed: () => likes.toggle(track).catchError((Object e) {
+                  if (context.mounted) {
+                    showToast(context, '操作失败：${describeError(e)}');
+                  }
+                }),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  transitionBuilder: (child, a) =>
+                      ScaleTransition(scale: a, child: child),
+                  child: Icon(
+                    liked
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    key: ValueKey(liked),
+                    size: 28,
+                    color: liked ? cs.primary : cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Vertical gradient from the cover's dominant colour into the surface.
+class _CoverGradient extends StatefulWidget {
+  const _CoverGradient({required this.url});
+
+  final String? url;
+
+  @override
+  State<_CoverGradient> createState() => _CoverGradientState();
+}
+
+class _CoverGradientState extends State<_CoverGradient> {
+  Color? _color;
+  String? _for;
+  Brightness? _brightness;
+
+  void _resolve(Brightness brightness) {
+    final url = sizedCoverUrl(normalizeCoverUrl(widget.url), 120);
+    if (url == _for && brightness == _brightness) return;
+    _for = url;
+    _brightness = brightness;
+    if (url == null || url.isEmpty) {
+      setState(() => _color = null);
+      return;
+    }
+    ColorScheme.fromImageProvider(
+      provider: CachedNetworkImageProvider(url),
+      brightness: brightness,
+    ).then((scheme) {
+      if (mounted && _for == url) {
+        setState(() => _color = scheme.primaryContainer);
+      }
+    }, onError: (_) {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final brightness = Theme.of(context).brightness;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _resolve(brightness);
+    });
+    final top = _color ?? cs.surfaceContainerHigh;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [top, Color.lerp(top, cs.surface, 0.6)!, cs.surface],
+          stops: const [0, 0.55, 1],
+        ),
       ),
     );
   }

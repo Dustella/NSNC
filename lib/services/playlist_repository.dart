@@ -83,16 +83,63 @@ class PlaylistRepository {
 
     final List<int> ids;
     if (likedSongsUid == null) {
-      ids = await _client.playlistTrackIds(playlistId);
+      final detail = await _client.playlistDetail(playlistId);
+      await _writeMeta(playlistId, detail);
+      ids = _idsOf(detail);
     } else {
-      final responses = await Future.wait([
-        _client.playlistTrackIds(playlistId),
+      final responses = await Future.wait<Object>([
+        _client.playlistDetail(playlistId),
         _client.likedSongIds(likedSongsUid),
       ]);
-      ids = _orderedLikedIds(responses[0], responses[1]);
+      final detail = responses[0] as Map<String, dynamic>;
+      await _writeMeta(playlistId, detail);
+      ids = _orderedLikedIds(_idsOf(detail), responses[1] as List<int>);
     }
     await _cache.write(key, {'orderVersion': expectedOrderVersion, 'ids': ids});
     return ids;
+  }
+
+  /// Display metadata (name, cover, description, creator, counts).
+  Future<Map<String, dynamic>> meta(
+    int playlistId, {
+    bool refresh = false,
+  }) async {
+    final key = 'playlist:$playlistId:meta';
+    if (!refresh) {
+      final cached = await _cache.read(key);
+      if (cached != null) return cached;
+    }
+    final detail = await _client.playlistDetail(playlistId);
+    return _writeMeta(playlistId, detail);
+  }
+
+  Future<Map<String, dynamic>> _writeMeta(
+    int playlistId,
+    Map<String, dynamic> detail,
+  ) async {
+    final p = (detail['playlist'] as Map?) ?? const {};
+    final creator = p['creator'] as Map?;
+    final meta = <String, dynamic>{
+      'name': p['name'],
+      'coverImgUrl': p['coverImgUrl'],
+      'description': p['description'],
+      'creator': creator?['nickname'],
+      'creatorAvatar': creator?['avatarUrl'],
+      'trackCount': p['trackCount'],
+      'playCount': p['playCount'],
+      'subscribedCount': p['subscribedCount'],
+      'updateTime': p['updateTime'] ?? p['trackUpdateTime'],
+      'tags': p['tags'],
+    };
+    await _cache.write('playlist:$playlistId:meta', meta);
+    return meta;
+  }
+
+  static List<int> _idsOf(Map<String, dynamic> detail) {
+    final trackIds = (detail['playlist']?['trackIds'] as List?) ?? const [];
+    return trackIds
+        .map((item) => ((item as Map)['id'] as num).toInt())
+        .toList(growable: false);
   }
 
   static List<int> _orderedLikedIds(

@@ -4,8 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_miuix/miuix.dart';
 import 'package:provider/provider.dart';
 
+import '../services/app_state.dart';
 import '../services/cache_service.dart';
 import '../services/download_location_service.dart';
+import '../services/ui_preferences.dart';
+import 'login_screen.dart';
+import 'widgets/common.dart';
 
 enum _SettingsDialog { androidLocation, iosInfo }
 
@@ -41,6 +45,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListView(
             padding: padding.add(const EdgeInsets.symmetric(vertical: 8)),
             children: [
+              const _AccountSettings(),
+              const _AppearanceSettings(),
+              const MiuixHorizontalDivider(),
               const MiuixSmallTitle('下载'),
               MiuixArrowPreference(
                 title: '下载位置',
@@ -236,4 +243,242 @@ class _LimitPreference extends StatelessWidget {
   String _formatSize(int value) => value >= 1024 && value % 1024 == 0
       ? '${value ~/ 1024} GiB'
       : '$value MiB';
+}
+
+/// Appearance, Discover-page modules and player customisation.
+class _AppearanceSettings extends StatelessWidget {
+  const _AppearanceSettings();
+
+  static const _themeModes = [
+    (ThemeMode.system, '跟随系统'),
+    (ThemeMode.light, '浅色'),
+    (ThemeMode.dark, '深色'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final prefs = context.watch<UiPreferences>();
+    final isWallpaper = prefs.accent == NsncAccent.wallpaper;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const MiuixSmallTitle('外观'),
+        MiuixOverlayDropdownPreference(
+          title: '深色模式',
+          items: [for (final m in _themeModes) m.$2],
+          selectedIndex: _themeModes.indexWhere((m) => m.$1 == prefs.themeMode),
+          onSelectedIndexChange: (i) =>
+              unawaited(prefs.setThemeMode(_themeModes[i].$1)),
+        ),
+        MiuixBasicComponent(
+          title: '主题色',
+          summary: isWallpaper
+              ? '跟随系统壁纸取色（Android 12+，其他平台使用默认色）'
+              : prefs.accent.label,
+          bottomAction: Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final accent in NsncAccent.values)
+                  _AccentSwatch(
+                    accent: accent,
+                    selected: accent == prefs.accent,
+                    onTap: () => unawaited(prefs.setAccent(accent)),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (prefs.accent != NsncAccent.miuix)
+          MiuixOverlayDropdownPreference(
+            title: '色彩风格',
+            summary: '由主题色生成整套配色的方式',
+            items: [for (final p in PaletteStyle.values) p.label],
+            selectedIndex: prefs.palette.index,
+            onSelectedIndexChange: (i) =>
+                unawaited(prefs.setPalette(PaletteStyle.values[i])),
+          ),
+        MiuixOverlayDropdownPreference(
+          title: '封面圆角',
+          items: [for (final c in CoverCorner.values) c.label],
+          selectedIndex: prefs.coverCorner.index,
+          onSelectedIndexChange: (i) =>
+              unawaited(prefs.setCoverCorner(CoverCorner.values[i])),
+        ),
+        MiuixOverlayDropdownPreference(
+          title: '默认列表样式',
+          summary: '歌单、榜单与电台的默认展示方式；各页面右上角可单独切换',
+          items: const ['列表', '卡片'],
+          selectedIndex: prefs.defaultLayout == CollectionLayout.list ? 0 : 1,
+          onSelectedIndexChange: (i) => unawaited(
+            prefs.setDefaultLayout(
+              i == 0 ? CollectionLayout.list : CollectionLayout.grid,
+            ),
+          ),
+        ),
+        const MiuixHorizontalDivider(),
+        const MiuixSmallTitle('发现页模块'),
+        for (final section in HomeSection.values)
+          MiuixSwitchPreference(
+            title: section.label,
+            summary: section == HomeSection.daily ? '需要登录' : null,
+            value: prefs.showsSection(section),
+            onChanged: (v) => unawaited(prefs.setSection(section, v)),
+          ),
+        const MiuixHorizontalDivider(),
+        const MiuixSmallTitle('播放页'),
+        MiuixOverlayDropdownPreference(
+          title: '播放页背景',
+          items: [for (final b in PlayerBackground.values) b.label],
+          selectedIndex: prefs.playerBackground.index,
+          onSelectedIndexChange: (i) =>
+              unawaited(prefs.setPlayerBackground(PlayerBackground.values[i])),
+        ),
+        MiuixSliderPreference(
+          title: '歌词字号',
+          value: prefs.lyricScale,
+          min: 0.8,
+          max: 1.6,
+          steps: 7,
+          valueText: '${(prefs.lyricScale * 100).round()}%',
+          onValueChange: (v) => unawaited(prefs.setLyricScale(v)),
+        ),
+        MiuixSwitchPreference(
+          title: '显示歌词翻译',
+          summary: '外文歌曲在原文下方显示中文翻译',
+          value: prefs.showTranslation,
+          onChanged: (v) => unawaited(prefs.setShowTranslation(v)),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccentSwatch extends StatelessWidget {
+  const _AccentSwatch({
+    required this.accent,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final NsncAccent accent;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final wallpaper = accent == NsncAccent.wallpaper;
+    return Tooltip(
+      message: accent.label,
+      child: Semantics(
+        button: true,
+        selected: selected,
+        label: '主题色 ${accent.label}',
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: 40,
+            height: 40,
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: selected ? cs.onSurface : Colors.transparent,
+                width: 2,
+              ),
+            ),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: wallpaper ? null : accent.color,
+                gradient: wallpaper
+                    ? const SweepGradient(
+                        colors: [
+                          Color(0xFFE57373),
+                          Color(0xFFFFD54F),
+                          Color(0xFF81C784),
+                          Color(0xFF64B5F6),
+                          Color(0xFFBA68C8),
+                          Color(0xFFE57373),
+                        ],
+                      )
+                    : null,
+              ),
+              child: selected
+                  ? const Icon(
+                      Icons.check_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    )
+                  : wallpaper
+                  ? const Icon(
+                      Icons.wallpaper_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    )
+                  : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AccountSettings extends StatelessWidget {
+  const _AccountSettings();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final loggedIn = app.status == AuthStatus.loggedIn;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const MiuixSmallTitle('账号'),
+        MiuixArrowPreference(
+          title: loggedIn ? app.nickname : '未登录',
+          summary: loggedIn ? '点击退出登录' : '扫码或手机号登录网易云音乐',
+          startAction: Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: CoverArt(
+              url: loggedIn ? app.avatarUrl : null,
+              size: 40,
+              circle: true,
+              icon: Icons.person_rounded,
+              imageSize: 120,
+            ),
+          ),
+          onClick: () => loggedIn
+              ? _confirmLogout(context)
+              : Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+                ),
+        ),
+        const MiuixHorizontalDivider(),
+      ],
+    );
+  }
+
+  Future<void> _confirmLogout(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('退出登录'),
+        content: const Text('确定要退出当前账号吗？'),
+        actions: [
+          MiuixTextButton('取消', onPressed: () => Navigator.pop(c, false)),
+          MiuixTextButton('退出', onPressed: () => Navigator.pop(c, true)),
+        ],
+      ),
+    );
+    if (confirm == true && context.mounted) {
+      await context.read<AppState>().logout();
+    }
+  }
 }

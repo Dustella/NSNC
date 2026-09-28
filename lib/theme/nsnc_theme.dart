@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_miuix/miuix.dart';
 
 /// NSNC's restrained Material 3 theme.
 ///
@@ -10,14 +11,20 @@ abstract final class NsncTheme {
   static const _seed = Color(0xFFC20C0C);
   static const _radius = 12.0;
 
-  static ThemeData light({TargetPlatform? platform}) =>
-      _build(Brightness.light, platform ?? defaultTargetPlatform);
+  static ThemeData light({TargetPlatform? platform, MiuixColors? miuix}) =>
+      _build(Brightness.light, platform ?? defaultTargetPlatform, miuix);
 
-  static ThemeData dark({TargetPlatform? platform}) =>
-      _build(Brightness.dark, platform ?? defaultTargetPlatform);
+  static ThemeData dark({TargetPlatform? platform, MiuixColors? miuix}) =>
+      _build(Brightness.dark, platform ?? defaultTargetPlatform, miuix);
 
-  static ThemeData _build(Brightness brightness, TargetPlatform platform) {
-    final scheme = _colorScheme(brightness);
+  static ThemeData _build(
+    Brightness brightness,
+    TargetPlatform platform,
+    MiuixColors? miuix,
+  ) {
+    final scheme = miuix == null
+        ? _colorScheme(brightness)
+        : _fromMiuix(miuix, brightness);
     final fonts = _fontsFor(platform);
 
     final base = ThemeData(
@@ -210,6 +217,37 @@ abstract final class NsncTheme {
           'sans-serif',
         ]),
       };
+
+  /// Material roles aligned with the active MIUIX palette, so Material and
+  /// MIUIX widgets on the same page share one primary and surface ladder.
+  static ColorScheme _fromMiuix(MiuixColors c, Brightness brightness) {
+    final base = ColorScheme.fromSeed(
+      seedColor: c.primary,
+      brightness: brightness,
+    );
+    return base.copyWith(
+      primary: c.primary,
+      onPrimary: c.onPrimary,
+      primaryContainer: c.primaryContainer,
+      onPrimaryContainer: c.onPrimaryContainer,
+      secondaryContainer: c.secondaryContainer,
+      onSecondaryContainer: c.onSecondaryContainer,
+      error: c.error,
+      onError: c.onError,
+      errorContainer: c.errorContainer,
+      onErrorContainer: c.onErrorContainer,
+      surface: c.surface,
+      onSurface: c.onSurface,
+      onSurfaceVariant: c.onSurfaceVariantSummary,
+      surfaceContainerLowest: c.background,
+      surfaceContainerLow: c.surfaceContainer,
+      surfaceContainer: c.surfaceContainer,
+      surfaceContainerHigh: c.surfaceContainerHigh,
+      surfaceContainerHighest: c.surfaceContainerHighest,
+      outline: c.outline,
+      outlineVariant: c.dividerLine,
+    );
+  }
 
   static ColorScheme _colorScheme(Brightness brightness) {
     final base = ColorScheme.fromSeed(seedColor: _seed, brightness: brightness);

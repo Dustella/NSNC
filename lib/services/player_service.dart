@@ -216,6 +216,55 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
     _publishState();
   }
 
+  /// Queue [track] to play right after the current one. Starts playback when
+  /// nothing is queued; moves the track when it is already in the queue.
+  Future<void> playNext(Track track) async {
+    if (_queue.isEmpty || current == null) {
+      await setQueue([track]);
+      return;
+    }
+    if (current!.id == track.id) return;
+    final currentTrack = current!;
+    final existing = _queue.indexWhere((t) => t.id == track.id);
+    if (existing >= 0) {
+      _queue.removeAt(existing);
+      _shuffleOrder.remove(existing);
+      for (var i = 0; i < _shuffleOrder.length; i++) {
+        if (_shuffleOrder[i] > existing) _shuffleOrder[i]--;
+      }
+    }
+    final currentQueueIndex = _queue.indexOf(currentTrack);
+    final insertAt = currentQueueIndex + 1;
+    _queue.insert(insertAt, track);
+    for (var i = 0; i < _shuffleOrder.length; i++) {
+      if (_shuffleOrder[i] >= insertAt) _shuffleOrder[i]++;
+    }
+    _orderPos = _shuffleOrder.indexOf(currentQueueIndex);
+    _shuffleOrder.insert(_orderPos + 1, insertAt);
+    queue.add(_queue.map(_mediaItemFor).toList(growable: false));
+    _publishState();
+  }
+
+  /// Remove one queued track (never the one playing).
+  void removeAt(int queueIndex) {
+    if (queueIndex < 0 ||
+        queueIndex >= _queue.length ||
+        queueIndex == currentIndex) {
+      return;
+    }
+    final playing = currentIndex;
+    _queue.removeAt(queueIndex);
+    _shuffleOrder.remove(queueIndex);
+    for (var i = 0; i < _shuffleOrder.length; i++) {
+      if (_shuffleOrder[i] > queueIndex) _shuffleOrder[i]--;
+    }
+    _orderPos = _shuffleOrder.indexOf(
+      playing > queueIndex ? playing - 1 : playing,
+    );
+    queue.add(_queue.map(_mediaItemFor).toList(growable: false));
+    _publishState();
+  }
+
   Future<void> playAt(int queueIndex) async {
     if (queueIndex < 0 || queueIndex >= _queue.length) return;
     _orderPos = _shuffleOrder.indexOf(queueIndex);

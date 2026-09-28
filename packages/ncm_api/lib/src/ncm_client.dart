@@ -419,5 +419,191 @@ class NcmClient {
     return (resp.body['data']?['dailySongs'] as List?) ?? const [];
   }
 
+  /// Personalized new songs. Each result item carries the song under `song`.
+  Future<List<dynamic>> personalizedNewSongs({int limit = 10}) async {
+    final resp = await _weapi('/api/personalized/newsong', {
+      'type': 'recommend',
+      'limit': limit,
+      'areaId': 0,
+    });
+    return (resp.body['result'] as List?) ?? const [];
+  }
+
+  /// All official charts. Each item is a playlist summary (`id`, `name`,
+  /// `coverImgUrl`, `updateFrequency`, …) that opens with [playlistDetail].
+  Future<List<dynamic>> toplists() async {
+    final resp = await _weapi('/api/toplist', {});
+    return (resp.body['list'] as List?) ?? const [];
+  }
+
+  /// Trending search keywords (`searchWord`, `content`, `score`, `iconUrl`).
+  Future<List<dynamic>> hotSearches() async {
+    final resp = await _weapi('/api/hotsearchlist/get', {});
+    return (resp.body['data'] as List?) ?? const [];
+  }
+
+  /// Album metadata plus its songs. Returns the raw body
+  /// (`album`, `songs`).
+  Future<Map<String, dynamic>> album(int id) async =>
+      _checked(await _weapi('/api/v1/album/$id', {}), 'album failed');
+
+  /// Artist profile plus its top 50 songs. Returns the raw body
+  /// (`artist`, `hotSongs`).
+  Future<Map<String, dynamic>> artist(int id) async =>
+      _checked(await _weapi('/api/v1/artist/$id', {}), 'artist failed');
+
+  /// Recently played songs (login required). Items carry the song under
+  /// `data`.
+  Future<List<dynamic>> recentSongs({int limit = 100}) async {
+    final resp = await _weapi('/api/play-record/song/list', {'limit': limit});
+    return (resp.body['data']?['list'] as List?) ?? const [];
+  }
+
+  // ============================================================
+  // Personal FM & likes
+  // ============================================================
+
+  /// Next batch (usually 3) of personal FM songs, legacy song layout.
+  Future<List<dynamic>> personalFm() async {
+    final resp = _checked(
+      await _weapi('/api/v1/radio/get', {}),
+      'personal fm failed',
+    );
+    return (resp['data'] as List?) ?? const [];
+  }
+
+  /// Tell the FM algorithm the user does not want this song.
+  Future<void> fmTrash(int songId, {int seconds = 25}) async {
+    _checked(
+      await _weapi('/api/radio/trash/add', {
+        'songId': songId,
+        'alg': 'RT',
+        'time': seconds,
+      }),
+      'fm trash failed',
+    );
+  }
+
+  /// Add or remove a song from the user's liked songs.
+  Future<void> likeSong(int songId, {bool like = true}) async {
+    _checked(
+      await _weapi('/api/radio/like', {
+        'alg': 'itembased',
+        'trackId': songId,
+        'like': like,
+        'time': '3',
+      }),
+      like ? 'like failed' : 'unlike failed',
+    );
+  }
+
+  // ============================================================
+  // Cloud drive
+  // ============================================================
+
+  /// One page of the user's cloud drive. Returns the raw body: `data` (items
+  /// carry `simpleSong`, `songId`, `fileName`, `fileSize`, `addTime`),
+  /// `count`, `size`, `maxSize`, `hasMore`.
+  Future<Map<String, dynamic>> userCloud({
+    int limit = 100,
+    int offset = 0,
+  }) async => _checked(
+    await _weapi('/api/v1/cloud/get', {'limit': limit, 'offset': offset}),
+    'cloud drive failed',
+  );
+
+  /// Permanently remove songs from the user's cloud drive.
+  Future<void> userCloudDelete(List<int> songIds) async {
+    _checked(
+      await _weapi('/api/cloud/del', {'songIds': songIds}),
+      'cloud delete failed',
+    );
+  }
+
+  // ============================================================
+  // Radio (DJ / podcasts)
+  // ============================================================
+
+  /// Radios the user subscribed to. Returns `djRadios`.
+  Future<List<dynamic>> djSubscribed({int limit = 50, int offset = 0}) async {
+    final resp = await _weapi('/api/djradio/get/subed', {
+      'limit': limit,
+      'offset': offset,
+      'total': true,
+    });
+    return (resp.body['djRadios'] as List?) ?? const [];
+  }
+
+  /// Editor-picked radios. Returns `djRadios`.
+  Future<List<dynamic>> djRecommend() async {
+    final resp = await _weapi('/api/djradio/recommend/v1', {});
+    return (resp.body['djRadios'] as List?) ?? const [];
+  }
+
+  /// Popular radios. Returns `djRadios`.
+  Future<List<dynamic>> djHot({int limit = 30, int offset = 0}) async {
+    final resp = await _weapi('/api/djradio/hot/v1', {
+      'limit': limit,
+      'offset': offset,
+    });
+    return (resp.body['djRadios'] as List?) ?? const [];
+  }
+
+  /// Radio metadata (`data`).
+  Future<Map<String, dynamic>> djDetail(int radioId) async {
+    final resp = _checked(
+      await _weapi('/api/djradio/v2/get', {'id': radioId}),
+      'radio detail failed',
+    );
+    return Map<String, dynamic>.from((resp['data'] as Map?) ?? const {});
+  }
+
+  /// One page of a radio's programs. Returns the raw body (`programs`,
+  /// `count`, `more`). Each program's playable audio is `mainSong`.
+  Future<Map<String, dynamic>> djPrograms(
+    int radioId, {
+    int limit = 30,
+    int offset = 0,
+    bool asc = false,
+  }) async => _checked(
+    await _weapi('/api/dj/program/byradio', {
+      'radioId': radioId,
+      'limit': limit,
+      'offset': offset,
+      'asc': asc,
+    }),
+    'radio programs failed',
+  );
+
+  /// Subscribe to or unsubscribe from a radio.
+  Future<void> djSubscribe(int radioId, {bool subscribe = true}) async {
+    _checked(
+      await _weapi('/api/djradio/${subscribe ? 'sub' : 'unsub'}', {
+        'id': radioId,
+      }),
+      'radio subscription failed',
+    );
+  }
+
+  Future<ApiResponse> _weapi(String path, Map<String, dynamic> data) =>
+      _request.send(
+        'POST',
+        'https://music.163.com$path',
+        data,
+        crypto: CryptoMode.weapi,
+      );
+
+  static Map<String, dynamic> _checked(ApiResponse resp, String message) {
+    if (resp.status != 200) {
+      final serverMessage = resp.body['message'] ?? resp.body['msg'];
+      throw ApiException(
+        resp.status,
+        serverMessage == null ? message : '$message: $serverMessage',
+        resp.body,
+      );
+    }
+    return resp.body;
+  }
+
   static String _md5(String s) => c.md5.convert(utf8.encode(s)).toString();
 }

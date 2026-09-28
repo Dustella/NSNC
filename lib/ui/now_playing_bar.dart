@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_miuix/miuix.dart';
 import 'package:provider/provider.dart';
 
+import '../services/library_services.dart';
 import '../services/player_service.dart';
-import 'lazy_network_image.dart';
 import 'player_screen.dart';
+import 'widgets/common.dart';
 
-/// Compact bottom bar showing the currently playing track with quick
-/// play/pause + next controls and a thin progress line. Tapping the body
-/// (anywhere but the buttons) opens the full [PlayerScreen].
+/// Floating mini player: cover, title/artist, like, play/pause and next,
+/// with a hairline progress track. Tapping the body opens [PlayerScreen].
 class NowPlayingBar extends StatelessWidget {
   const NowPlayingBar({super.key});
 
@@ -20,113 +20,136 @@ class NowPlayingBar extends StatelessWidget {
 
     final cs = Theme.of(context).colorScheme;
     final duration = p.duration;
+    bool liked = false;
+    LikeService? likes;
+    try {
+      likes = context.watch<LikeService>();
+      liked = likes.isLiked(track.id);
+    } on ProviderNotFoundException {
+      likes = null;
+    }
 
-    return MiuixSurface(
-      color: cs.surfaceContainerHigh,
-      onPressed: () => Navigator.of(
-        context,
-      ).push(MaterialPageRoute<void>(builder: (_) => const PlayerScreen())),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ExcludeSemantics(
-            child: ValueListenableBuilder<Duration>(
-              valueListenable: p.positionListenable,
-              builder: (context, position, _) {
-                final progress = duration.inMilliseconds > 0
-                    ? position.inMilliseconds / duration.inMilliseconds
-                    : 0.0;
-                return MiuixLinearProgressIndicator(
-                  progress: progress.clamp(0.0, 1.0),
-                  height: 2,
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: Row(
-              children: [
-                _Cover(url: track.albumArtUrl, cs: cs),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        track.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+      child: MiuixSurface(
+        color: cs.surfaceContainerHigh,
+        cornerRadius: 16,
+        onPressed: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => const PlayerScreen())),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 7, 4, 5),
+              child: Row(
+                children: [
+                  CoverArt(
+                    url: track.albumArtUrl,
+                    size: 44,
+                    radius: coverRadiusOf(context, scale: 0.8),
+                    imageSize: 140,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          track.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                        Text(
+                          track.artistLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (likes != null && likes.ready)
+                    Tooltip(
+                      message: liked ? '取消喜欢' : '喜欢',
+                      child: MiuixIconButton(
+                        onPressed: () =>
+                            likes!.toggle(track).catchError((Object e) {
+                              if (context.mounted) {
+                                showToast(context, '操作失败：${describeError(e)}');
+                              }
+                            }),
+                        child: Icon(
+                          liked
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          color: liked ? cs.primary : cs.onSurfaceVariant,
+                          size: 22,
                         ),
                       ),
-                      Text(
-                        track.artistLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurfaceVariant,
+                    ),
+                  if (p.isBuffering)
+                    const SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: Center(
+                        child: MiuixCircularProgressIndicator(size: 18),
+                      ),
+                    )
+                  else
+                    Tooltip(
+                      message: p.isPlaying ? '暂停' : '播放',
+                      child: MiuixIconButton(
+                        onPressed: p.togglePlay,
+                        child: Icon(
+                          p.isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          size: 28,
                         ),
                       ),
-                    ],
+                    ),
+                  Tooltip(
+                    message: '下一首',
+                    child: MiuixIconButton(
+                      onPressed: p.next,
+                      child: const Icon(Icons.skip_next_rounded, size: 26),
+                    ),
                   ),
-                ),
-                if (p.isBuffering)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: MiuixCircularProgressIndicator(size: 18),
-                  ),
-                Tooltip(
-                  message: p.isPlaying ? '暂停' : '播放',
-                  child: MiuixIconButton(
-                    onPressed: p.togglePlay,
-                    child: Icon(p.isPlaying ? Icons.pause : Icons.play_arrow),
-                  ),
-                ),
-                Tooltip(
-                  message: '下一首',
-                  child: MiuixIconButton(
-                    onPressed: p.next,
-                    child: const Icon(Icons.skip_next),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 44x44 rounded album thumbnail with a music-note placeholder for
-/// null/empty URLs or load failures.
-class _Cover extends StatelessWidget {
-  const _Cover({required this.url, required this.cs});
-
-  final String? url;
-  final ColorScheme cs;
-
-  @override
-  Widget build(BuildContext context) {
-    const size = 44.0;
-    final placeholder = Container(
-      width: size,
-      height: size,
-      color: cs.surfaceContainerHighest,
-      child: Icon(Icons.music_note, size: 22, color: cs.onSurfaceVariant),
-    );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: LazyNetworkImage(
-        url: url,
-        width: size,
-        height: size,
-        placeholder: placeholder,
+            ExcludeSemantics(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+                child: ValueListenableBuilder<Duration>(
+                  valueListenable: p.positionListenable,
+                  builder: (context, position, _) {
+                    final progress = duration.inMilliseconds > 0
+                        ? position.inMilliseconds / duration.inMilliseconds
+                        : 0.0;
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: progress.clamp(0.0, 1.0),
+                        minHeight: 2.5,
+                        backgroundColor: cs.onSurface.withValues(alpha: 0.08),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
