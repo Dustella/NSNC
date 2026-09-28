@@ -1,0 +1,60 @@
+<!--
+  NSNC Windows installer (WiX Toolset v5).
+
+  Build from the repo root after a Flutter Windows release build:
+    wix build packaging/windows/nsnc.wxs -arch x64 -ext WixToolset.UI.wixext
+      -d Version=0.1.0.1
+      -d ReleaseDir=build\windows\x64\runner\Release
+      -d IconPath=windows\runner\resources\app_icon.ico
+      -o nsnc.msi
+
+  UpgradeCode must never change: it is what lets a new MSI replace an old one.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="NSNC"
+           Manufacturer="Dustella"
+           Version="$(Version)"
+           UpgradeCode="{6F1B7C2E-4D3A-4E8B-9A51-2C7D0E9F3B84}"
+           Scope="perMachine">
+
+    <!-- The 4th version field (build number) is ignored by MSI version
+         comparison, so allow "same" versions to upgrade as well. -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of NSNC is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon.ico" SourceFile="$(IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/Dustella/NSNC" />
+
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="NSNC">
+        <Component Id="MainExecutable">
+          <File Id="NsncExe" Source="$(ReleaseDir)\nsnc.exe" KeyPath="yes">
+            <Shortcut Id="StartMenuShortcut"
+                      Directory="ProgramMenuFolder"
+                      Name="NSNC"
+                      WorkingDirectory="INSTALLFOLDER"
+                      Icon="AppIcon.ico" />
+          </File>
+        </Component>
+
+        <!-- Everything else Flutter puts next to the exe (DLLs, data\). -->
+        <Files Include="$(ReleaseDir)\**">
+          <Exclude Files="$(ReleaseDir)\nsnc.exe" />
+        </Files>
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Standard "choose install folder" wizard, minus the license page. -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <UI>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog"
+               Value="InstallDirDlg" Order="99" Condition="NOT Installed" />
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog"
+               Value="WelcomeDlg" Order="99" Condition="NOT Installed" />
+    </UI>
+  </Package>
+</Wix>

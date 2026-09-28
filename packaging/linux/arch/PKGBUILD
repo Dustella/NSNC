@@ -1,0 +1,16 @@
+# Binary package: repackages the prebuilt Flutter bundle staged by
+# packaging/linux/package.sh into ./root. @PKGVER@/@PKGREL@ are filled in there.
+pkgname=nsnc
+pkgver=@PKGVER@
+pkgrel=@PKGREL@
+pkgdesc='NetEase Cloud Music client'
+arch=('x86_64')
+url='https://github.com/Dustella/NSNC'
+license=('WTFPL')
+depends=('gtk3' 'mpv')
+options=('!strip' '!debug')
+
+package() {
+  cp -a "$startdir/root/." "$pkgdir/"
+  install -Dm644 "$startdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

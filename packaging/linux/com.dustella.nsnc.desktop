@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=NSNC
+GenericName=Music Player
+Comment=NetEase Cloud Music client
+Exec=nsnc
+Icon=com.dustella.nsnc
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupWMClass=com.dustella.nsnc
