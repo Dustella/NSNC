@@ -41,18 +41,50 @@ jobs:
       - name: Build
         run: flutter build windows --release
 
-      - name: Package
+      - name: Install WiX Toolset
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add --global WixToolset.UI.wixext/5.0.2
+
+      - name: Package (zip + MSI)
         shell: pwsh
         run: |
           $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(\S+)').Matches[0].Groups[1].Value
+          # MSI versions are numeric only: 0.1.0+1 -> 0.1.0.1
+          $msiVersion = $version -replace '\+', '.'
           $name = "nsnc-$version-windows-x64"
-          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "$name.zip"
+          $release = 'build\windows\x64\runner\Release'
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path "$release\*" -DestinationPath "dist\$name.zip"
+          wix build packaging/windows/nsnc.wxs -arch x64 -ext WixToolset.UI.wixext `
+            -d "Version=$msiVersion" -d "ReleaseDir=$release" `
+            -d "IconPath=windows\runner\resources\app_icon.ico" `
+            -o "dist\$name.msi"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem dist | Format-Table Name, Length
           "ARTIFACT=$name" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Verify MSI installs and uninstalls
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem dist\*.msi).FullName
+          $p = Start-Process msiexec -ArgumentList '/i', "`"$msi`"", '/qn', '/l*v', 'install.log' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 60; exit $p.ExitCode }
+          $exe = Join-Path $env:ProgramFiles 'NSNC\nsnc.exe'
+          if (-not (Test-Path $exe)) { throw "nsnc.exe not installed at $exe" }
+          if (-not (Test-Path (Join-Path $env:ProgramFiles 'NSNC\data\flutter_assets'))) { throw 'data\ folder missing' }
+          $lnk = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\NSNC.lnk'
+          if (-not (Test-Path $lnk)) { throw "Start Menu shortcut missing at $lnk" }
+          Write-Host "Installed OK: $exe"
+          $p = Start-Process msiexec -ArgumentList '/x', "`"$msi`"", '/qn' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { exit $p.ExitCode }
+          if (Test-Path $exe) { throw 'nsnc.exe still present after uninstall' }
+          Write-Host 'Uninstalled OK'
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT }}
-          path: ${{ env.ARTIFACT }}.zip
+          path: dist/*
           if-no-files-found: error
 
   linux:
@@ -67,7 +99,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             clang cmake ninja-build pkg-config \
-            libgtk-3-dev liblzma-dev libstdc++-12-dev libmpv-dev
+            libgtk-3-dev liblzma-dev libstdc++-12-dev libmpv-dev \
+            imagemagick patchelf desktop-file-utils
 
       - uses: subosito/flutter-action@v2
         with:
@@ -90,7 +123,11 @@ jobs:
           tar -C build/linux/x64/release --transform "s,^bundle,$name," \
             -czf "dist/$name.tar.gz" bundle
           echo "ARTIFACT=$name" >> "$GITHUB_ENV"
-          ls -l dist
+
+      - name: Build and verify .deb, Arch package and AppImage
+        run: |
+          version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml)"
+          bash packaging/linux/package.sh "$version" build/linux/x64/release/bundle dist
 
       - uses: actions/upload-artifact@v4
         with:
