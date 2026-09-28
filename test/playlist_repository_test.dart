@@ -9,31 +9,83 @@ import 'package:nsnc/services/cache_service.dart';
 import 'package:nsnc/services/playlist_repository.dart';
 
 void main() {
-  test('liked playlist keeps playlist order and appends authoritative-only ids', () async {
+  test(
+    'liked playlist keeps playlist order and appends authoritative-only ids',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'nsnc_liked_order_test_',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final cache = await PlaylistCache.open(
+        directory: directory,
+        maxBytes: 100000,
+      );
+      await cache.write('playlist:7:index', {
+        'orderVersion': 1,
+        'ids': [999],
+      });
+
+      final requestedPaths = <String>[];
+      final client = NcmClient(
+        httpClient: MockClient((request) async {
+          requestedPaths.add(request.url.path);
+          final body = switch (request.url.path) {
+            '/api/v6/playlist/detail' =>
+              '{"code":200,"playlist":{"trackIds":['
+                  '{"id":3},{"id":1},{"id":4}]}}',
+            '/weapi/song/like/get' => '{"code":200,"ids":[4,3,2]}',
+            '/weapi/v3/song/detail' =>
+              '{"code":200,"songs":[{"id":3},{"id":4},{"id":2}]}',
+            _ => throw StateError('Unexpected request: ${request.url}'),
+          };
+          return http.Response.bytes(utf8.encode(body), 200);
+        }),
+      );
+      addTearDown(client.close);
+      final repository = PlaylistRepository(client: client, cache: cache);
+
+      final page = await repository.page(
+        playlistId: 7,
+        page: 0,
+        likedSongsUid: 42,
+      );
+
+      expect(page.songs.map((song) => song['id']), [3, 4, 2]);
+      expect(requestedPaths, contains('/api/v6/playlist/detail'));
+      expect(requestedPaths, contains('/weapi/song/like/get'));
+      expect((await cache.read('playlist:7:index'))?['orderVersion'], 2);
+      expect((await cache.read('playlist:7:index'))?['ids'], [3, 4, 2]);
+    },
+  );
+
+  test('invalidateLikedSongs makes the next visit see a new like', () async {
     final directory = await Directory.systemTemp.createTemp(
-      'nsnc_liked_order_test_',
+      'nsnc_liked_invalidate_test_',
     );
     addTearDown(() => directory.delete(recursive: true));
     final cache = await PlaylistCache.open(
       directory: directory,
       maxBytes: 100000,
     );
-    await cache.write('playlist:7:index', {
-      'orderVersion': 1,
-      'ids': [999],
-    });
-
-    final requestedPaths = <String>[];
+    var liked = [1, 2];
     final client = NcmClient(
       httpClient: MockClient((request) async {
-        requestedPaths.add(request.url.path);
         final body = switch (request.url.path) {
-          '/api/v6/playlist/detail' =>
-            '{"code":200,"playlist":{"trackIds":['
-                '{"id":3},{"id":1},{"id":4}]}}',
-          '/weapi/song/like/get' => '{"code":200,"ids":[4,3,2]}',
-          '/weapi/v3/song/detail' =>
-            '{"code":200,"songs":[{"id":3},{"id":4},{"id":2}]}',
+          '/api/v6/playlist/detail' => jsonEncode({
+            'code': 200,
+            'playlist': {
+              'trackIds': [
+                for (final id in liked) {'id': id},
+              ],
+            },
+          }),
+          '/weapi/song/like/get' => jsonEncode({'code': 200, 'ids': liked}),
+          '/weapi/v3/song/detail' => jsonEncode({
+            'code': 200,
+            'songs': [
+              for (final id in liked) {'id': id},
+            ],
+          }),
           _ => throw StateError('Unexpected request: ${request.url}'),
         };
         return http.Response.bytes(utf8.encode(body), 200);
@@ -42,16 +94,56 @@ void main() {
     addTearDown(client.close);
     final repository = PlaylistRepository(client: client, cache: cache);
 
-    final page = await repository.page(
+    Future<List<Object?>> visit() async => (await repository.page(
       playlistId: 7,
       page: 0,
       likedSongsUid: 42,
-    );
+    )).songs.map((s) => s['id']).toList();
 
-    expect(page.songs.map((song) => song['id']), [3, 4, 2]);
-    expect(requestedPaths, contains('/api/v6/playlist/detail'));
-    expect(requestedPaths, contains('/weapi/song/like/get'));
-    expect((await cache.read('playlist:7:index'))?['orderVersion'], 2);
-    expect((await cache.read('playlist:7:index'))?['ids'], [3, 4, 2]);
+    expect(await visit(), [1, 2]);
+    liked = [9, 1, 2]; // liked a new song on the server
+    expect(await visit(), [1, 2], reason: 'still served from cache');
+
+    await repository.invalidateLikedSongs(42);
+    expect(await visit(), [9, 1, 2]);
+  });
+
+  test('invalidateLikedSongs falls back to the cached playlist list', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'nsnc_liked_fallback_test_',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final cache = await PlaylistCache.open(
+      directory: directory,
+      maxBytes: 100000,
+    );
+    await cache.write('user:42:playlists', {
+      'playlists': [
+        {'id': 7, 'specialType': 5},
+        {'id': 8, 'specialType': 0},
+      ],
+    });
+    await cache.write('playlist:7:index', {
+      'orderVersion': 2,
+      'ids': [1],
+    });
+    await cache.write('playlist:8:index', {
+      'orderVersion': 1,
+      'ids': [2],
+    });
+    final client = NcmClient(
+      httpClient: MockClient((_) async {
+        throw StateError('no network expected');
+      }),
+    );
+    addTearDown(client.close);
+
+    await PlaylistRepository(
+      client: client,
+      cache: cache,
+    ).invalidateLikedSongs(42);
+
+    expect(await cache.read('playlist:7:index'), isNull);
+    expect(await cache.read('playlist:8:index'), isNotNull);
   });
 }

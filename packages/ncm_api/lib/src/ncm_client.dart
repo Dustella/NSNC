@@ -474,7 +474,7 @@ class NcmClient {
 
   /// Tell the FM algorithm the user does not want this song.
   Future<void> fmTrash(int songId, {int seconds = 25}) async {
-    _checked(
+    _checkedWrite(
       await _weapi('/api/radio/trash/add', {
         'songId': songId,
         'alg': 'RT',
@@ -486,7 +486,7 @@ class NcmClient {
 
   /// Add or remove a song from the user's liked songs.
   Future<void> likeSong(int songId, {bool like = true}) async {
-    _checked(
+    _checkedWrite(
       await _weapi('/api/radio/like', {
         'alg': 'itembased',
         'trackId': songId,
@@ -514,7 +514,7 @@ class NcmClient {
 
   /// Permanently remove songs from the user's cloud drive.
   Future<void> userCloudDelete(List<int> songIds) async {
-    _checked(
+    _checkedWrite(
       await _weapi('/api/cloud/del', {'songIds': songIds}),
       'cloud delete failed',
     );
@@ -577,7 +577,7 @@ class NcmClient {
 
   /// Subscribe to or unsubscribe from a radio.
   Future<void> djSubscribe(int radioId, {bool subscribe = true}) async {
-    _checked(
+    _checkedWrite(
       await _weapi('/api/djradio/${subscribe ? 'sub' : 'unsub'}', {
         'id': radioId,
       }),
@@ -603,6 +603,24 @@ class NcmClient {
       );
     }
     return resp.body;
+  }
+
+  /// Like [_checked], but for mutations: [NcmRequest.send] folds business
+  /// codes such as 400/502 into `status == 200` because some reads still
+  /// carry a usable payload, which would make a rejected write look like a
+  /// success. A write only counts when the body itself says `code: 200`.
+  static Map<String, dynamic> _checkedWrite(ApiResponse resp, String message) {
+    final body = _checked(resp, message);
+    final code = body['code'];
+    if (code is int && code != 200) {
+      final serverMessage = body['message'] ?? body['msg'];
+      throw ApiException(
+        code,
+        serverMessage == null ? message : '$message: $serverMessage',
+        body,
+      );
+    }
+    return body;
   }
 
   static String _md5(String s) => c.md5.convert(utf8.encode(s)).toString();

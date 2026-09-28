@@ -93,22 +93,30 @@ class NsncApp extends StatelessWidget {
         ChangeNotifierProvider<PlayerService>.value(value: player),
         ChangeNotifierProvider<CacheSettings>.value(value: cacheSettings),
         ChangeNotifierProvider<UiPreferences>.value(value: uiPreferences),
-        ChangeNotifierProxyProvider<AppState, LikeService>(
-          create: (_) => LikeService(client: client),
-          update: (_, app, likes) =>
-              (likes ?? LikeService(client: client))..sync(app),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => PersonalFmService(client: client, player: player),
-        ),
         Provider(
           create: (_) => PlaylistRepository(
             client: client,
             cache: cacheSettings.playlistCache,
           ),
         ),
+        ChangeNotifierProxyProvider<AppState, LikeService>(
+          create: (context) => _likeService(context),
+          update: (context, app, likes) =>
+              (likes ?? _likeService(context))..sync(app),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => PersonalFmService(client: client, player: player),
+        ),
       ],
       child: const _ThemedApp(),
+    );
+  }
+
+  LikeService _likeService(BuildContext context) {
+    final playlists = context.read<PlaylistRepository>();
+    return LikeService(
+      client: client,
+      onLikesChanged: playlists.invalidateLikedSongs,
     );
   }
 }

@@ -235,6 +235,30 @@ void main() {
         throwsA(isA<ApiException>().having((e) => e.status, 'status', 301)),
       );
     });
+
+    test('rejects writes whose body code is a passthrough 400/502', () async {
+      final client = clientFor({
+        '/weapi/cloud/del': {'code': 400, 'msg': 'invalid'},
+        '/weapi/radio/like': {'code': 502, 'msg': 'busy'},
+        '/weapi/djradio/sub': {'code': 400},
+        '/weapi/radio/trash/add': {'code': 502},
+      }, []);
+      addTearDown(client.close);
+      Matcher failsWith(int code) =>
+          throwsA(isA<ApiException>().having((e) => e.status, 'status', code));
+      await expectLater(client.userCloudDelete([1]), failsWith(400));
+      await expectLater(client.likeSong(1), failsWith(502));
+      await expectLater(client.djSubscribe(1), failsWith(400));
+      await expectLater(client.fmTrash(1), failsWith(502));
+    });
+
+    test('accepts writes with body code 200', () async {
+      final client = clientFor({
+        '/weapi/cloud/del': {'code': 200},
+      }, []);
+      addTearDown(client.close);
+      await client.userCloudDelete([1]);
+    });
   });
 
   test('Material theme follows the active MIUIX palette', () {

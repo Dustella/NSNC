@@ -9,10 +9,14 @@ import 'player_service.dart';
 
 /// Account-wide liked-song ids, so any row or the player can show a heart.
 class LikeService extends ChangeNotifier {
-  LikeService({required NcmClient client})
+  LikeService({required NcmClient client, this.onLikesChanged})
     : _client = client; // ignore: prefer_initializing_formals
 
   final NcmClient _client;
+
+  /// Called with the user's uid after a like/unlike is confirmed by the
+  /// server, so cached copies of the liked-songs playlist can be dropped.
+  final Future<void> Function(int uid)? onLikesChanged;
   final Set<int> _liked = {};
   final Set<int> _pending = {};
   int? _uid;
@@ -48,7 +52,8 @@ class LikeService extends ChangeNotifier {
 
   /// Flip the like state optimistically; rolls back and rethrows on failure.
   Future<void> toggle(Track track) async {
-    if (_uid == null || _pending.contains(track.id)) return;
+    final uid = _uid;
+    if (uid == null || _pending.contains(track.id)) return;
     final like = !_liked.contains(track.id);
     _pending.add(track.id);
     like ? _liked.add(track.id) : _liked.remove(track.id);
@@ -62,6 +67,11 @@ class LikeService extends ChangeNotifier {
       _pending.remove(track.id);
       notifyListeners();
     }
+    try {
+      await onLikesChanged?.call(uid);
+    } catch (_) {
+      // Cache invalidation is best effort; the like itself succeeded.
+    }
   }
 }
 
@@ -69,7 +79,7 @@ class LikeService extends ChangeNotifier {
 /// and refills it as the listener nears the end. FM mode ends by itself as
 /// soon as something else replaces the queue.
 class PersonalFmService extends ChangeNotifier {
-  PersonalFmService({required NcmClient client, required PlayerService player})
+  PersonalFmService({required NcmClient client, required FmPlayback player})
     : _client = client, // ignore: prefer_initializing_formals
       // ignore: prefer_initializing_formals
       _player = player {
@@ -77,7 +87,7 @@ class PersonalFmService extends ChangeNotifier {
   }
 
   final NcmClient _client;
-  final PlayerService _player;
+  final FmPlayback _player;
   final List<int> _fmIds = [];
   bool _active = false;
   bool _loading = false;
@@ -99,22 +109,30 @@ class PersonalFmService extends ChangeNotifier {
   /// Start (or restart) FM from a fresh batch.
   Future<void> start() async {
     if (_loading) return;
+    // Stay inactive while the queue is swapped: turning shuffle off and
+    // installing the batch both publish intermediate player states that
+    // would otherwise look like "something else replaced the queue".
+    _active = false;
     _setLoading(true);
     try {
       _fmIds.clear();
       final batch = await _fetchBatch();
       if (batch.isEmpty) throw StateError('私人 FM 暂时没有返回歌曲');
       _fmIds.addAll(batch.map((t) => t.id));
-      _active = true;
       if (_player.isShuffle) _player.toggleShuffle();
       await _player.setQueue(batch);
+      // Only claim the queue if it is still ours after playback started.
+      _active = _isFmQueue();
+      if (!_active) _fmIds.clear();
     } catch (e) {
       _error = e;
       _active = false;
+      _fmIds.clear();
       rethrow;
     } finally {
       _setLoading(false);
     }
+    _onPlayerChanged(); // a one-track batch already needs a refill
   }
 
   /// Dislike the current FM song and skip it.
@@ -135,20 +153,22 @@ class PersonalFmService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _onPlayerChanged() {
-    if (!_active) return;
+  bool _isFmQueue() {
     final queue = _player.tracks;
-    final stillFm =
-        queue.isNotEmpty &&
+    return queue.isNotEmpty &&
         queue.length == _fmIds.length &&
         queue.first.id == _fmIds.first;
-    if (!stillFm) {
+  }
+
+  void _onPlayerChanged() {
+    if (!_active) return;
+    if (!_isFmQueue()) {
       _active = false;
       _fmIds.clear();
       notifyListeners();
       return;
     }
-    if (!_loading && _player.currentIndex >= queue.length - 1) {
+    if (!_loading && _player.currentIndex >= _player.tracks.length - 1) {
       unawaited(_refill());
     }
   }
@@ -158,8 +178,13 @@ class PersonalFmService extends ChangeNotifier {
     try {
       final batch = await _fetchBatch();
       if (!_active || batch.isEmpty) return;
+      final firstNew = _player.tracks.length;
+      // If the last track already finished while we were fetching, the
+      // player has stopped at the end and appending alone will not resume.
+      final resume = _player.reachedEnd;
       _fmIds.addAll(batch.map((t) => t.id));
       _player.enqueueAll(batch);
+      if (resume) await _player.playAt(firstNew);
     } catch (e) {
       _error = e;
     } finally {
