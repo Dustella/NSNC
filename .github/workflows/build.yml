@@ -1,7 +1,8 @@
 name: Build packages
 
 # Stage 1: Windows (unsigned) and Android (release-signed).
-# Linux/macOS (stage 2) and iOS (stage 3) are added later.
+# Stage 2: Linux x64 and macOS universal (both unsigned; macOS is ad-hoc signed only).
+# iOS (stage 3) is added later.
 
 on:
   push:
@@ -52,6 +53,90 @@ jobs:
         with:
           name: ${{ env.ARTIFACT }}
           path: ${{ env.ARTIFACT }}.zip
+          if-no-files-found: error
+
+  linux:
+    name: Linux (x64, unsigned)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev libmpv-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build
+        run: flutter build linux --release
+
+      - name: Package
+        run: |
+          version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml)"
+          name="nsnc-$version-linux-x64"
+          mkdir -p dist
+          # Top-level folder inside the archive is named after the artifact.
+          tar -C build/linux/x64/release --transform "s,^bundle,$name," \
+            -czf "dist/$name.tar.gz" bundle
+          echo "ARTIFACT=$name" >> "$GITHUB_ENV"
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: dist/*
+          if-no-files-found: error
+
+  macos:
+    name: macOS (universal, unsigned)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build
+        run: flutter build macos --release
+
+      - name: Package
+        run: |
+          version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml)"
+          name="nsnc-$version-macos-universal"
+          app="build/macos/Build/Products/Release/nsnc.app"
+          echo "Architectures: $(lipo -archs "$app/Contents/MacOS/nsnc")"
+          codesign -dv "$app" 2>&1 | grep -E 'Signature|Identifier' || true
+
+          mkdir -p dist dmg-staging
+          ditto -c -k --sequesterRsrc --keepParent "$app" "dist/$name.zip"
+          cp -R "$app" dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname NSNC -srcfolder dmg-staging -ov -format UDZO "dist/$name.dmg"
+          echo "ARTIFACT=$name" >> "$GITHUB_ENV"
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: dist/*
           if-no-files-found: error
 
   android:
