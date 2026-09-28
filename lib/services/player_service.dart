@@ -16,9 +16,27 @@ import 'download_location_service.dart';
 
 enum RepeatMode { off, one, all }
 
+/// The slice of [PlayerService] that personal FM drives, so FM logic can be
+/// tested without a native player.
+abstract interface class FmPlayback implements Listenable {
+  List<Track> get tracks;
+  Track? get current;
+  int get currentIndex;
+  Duration get position;
+  bool get isShuffle;
+  bool get reachedEnd;
+  void toggleShuffle();
+  Future<void> setQueue(List<Track> tracks, {int startAt = 0});
+  void enqueueAll(Iterable<Track> tracks);
+  Future<void> playAt(int queueIndex);
+  Future<void> next({bool userInitiated = true});
+}
+
 /// Owns the playback queue and is the single source of truth for the app UI,
 /// Android MediaSession/notification and Windows SMTC.
-class PlayerService extends BaseAudioHandler with ChangeNotifier {
+class PlayerService extends BaseAudioHandler
+    with ChangeNotifier
+    implements FmPlayback {
   PlayerService({
     required NcmClient client,
     required AudioStore audioStore,
@@ -58,6 +76,7 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
   double _volume = 100;
   Object? _lastError;
   bool _advancing = false;
+  bool _reachedEnd = false;
   bool _downloading = false;
   double _downloadProgress = 0;
   int _sourceRevision = 0;
@@ -78,20 +97,30 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
   final List<StreamSubscription<dynamic>> _subs = [];
 
   // --- public state ---
+  @override
   List<Track> get tracks => List.unmodifiable(_queue);
+  @override
   Track? get current => (_orderPos >= 0 && _orderPos < _shuffleOrder.length)
       ? _queue[_shuffleOrder[_orderPos]]
       : null;
+  @override
   int get currentIndex => (_orderPos >= 0 && _orderPos < _shuffleOrder.length)
       ? _shuffleOrder[_orderPos]
       : -1;
   bool get isPlaying => _playing;
   bool get isBuffering => _buffering;
+  @override
   Duration get position => _position;
   Duration get duration => _duration;
   double get volume => _volume;
   RepeatMode get repeatMode => _repeat;
+  @override
   bool get isShuffle => _shuffle;
+
+  /// True when auto-advance stopped at the last track (repeat off) and
+  /// nothing has started since.
+  @override
+  bool get reachedEnd => _reachedEnd;
   SongLevel get level => _level;
   Object? get lastError => _lastError;
   bool get isDownloading => _downloading;
@@ -185,6 +214,7 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
   // --- queue control ---
 
   /// Replace the queue and publish the selected track before resolving its URL.
+  @override
   Future<void> setQueue(List<Track> tracks, {int startAt = 0}) async {
     _queue
       ..clear()
@@ -206,6 +236,7 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
     _publishState();
   }
 
+  @override
   void enqueueAll(Iterable<Track> tracks) {
     final additions = tracks.toList(growable: false);
     if (additions.isEmpty) return;
@@ -216,12 +247,63 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
     _publishState();
   }
 
+  /// Queue [track] to play right after the current one. Starts playback when
+  /// nothing is queued; moves the track when it is already in the queue.
+  Future<void> playNext(Track track) async {
+    if (_queue.isEmpty || current == null) {
+      await setQueue([track]);
+      return;
+    }
+    if (current!.id == track.id) return;
+    final currentTrack = current!;
+    final existing = _queue.indexWhere((t) => t.id == track.id);
+    if (existing >= 0) {
+      _queue.removeAt(existing);
+      _shuffleOrder.remove(existing);
+      for (var i = 0; i < _shuffleOrder.length; i++) {
+        if (_shuffleOrder[i] > existing) _shuffleOrder[i]--;
+      }
+    }
+    final currentQueueIndex = _queue.indexOf(currentTrack);
+    final insertAt = currentQueueIndex + 1;
+    _queue.insert(insertAt, track);
+    for (var i = 0; i < _shuffleOrder.length; i++) {
+      if (_shuffleOrder[i] >= insertAt) _shuffleOrder[i]++;
+    }
+    _orderPos = _shuffleOrder.indexOf(currentQueueIndex);
+    _shuffleOrder.insert(_orderPos + 1, insertAt);
+    queue.add(_queue.map(_mediaItemFor).toList(growable: false));
+    _publishState();
+  }
+
+  /// Remove one queued track (never the one playing).
+  void removeAt(int queueIndex) {
+    if (queueIndex < 0 ||
+        queueIndex >= _queue.length ||
+        queueIndex == currentIndex) {
+      return;
+    }
+    final playing = currentIndex;
+    _queue.removeAt(queueIndex);
+    _shuffleOrder.remove(queueIndex);
+    for (var i = 0; i < _shuffleOrder.length; i++) {
+      if (_shuffleOrder[i] > queueIndex) _shuffleOrder[i]--;
+    }
+    _orderPos = _shuffleOrder.indexOf(
+      playing > queueIndex ? playing - 1 : playing,
+    );
+    queue.add(_queue.map(_mediaItemFor).toList(growable: false));
+    _publishState();
+  }
+
+  @override
   Future<void> playAt(int queueIndex) async {
     if (queueIndex < 0 || queueIndex >= _queue.length) return;
     _orderPos = _shuffleOrder.indexOf(queueIndex);
     await _playCurrent();
   }
 
+  @override
   Future<void> next({bool userInitiated = true}) async {
     if (_queue.isEmpty) return;
     if (_repeat == RepeatMode.one && !userInitiated) {
@@ -233,7 +315,10 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
     } else if (userInitiated || _repeat == RepeatMode.all) {
       _orderPos = 0; // wrap to start on manual next or repeat-all
     } else {
-      return; // auto-advance reached the end with no loop
+      // Auto-advance reached the end with no loop: remember it so a queue
+      // extension (e.g. an FM refill) can resume playback.
+      _reachedEnd = true;
+      return;
     }
     await _playCurrent();
   }
@@ -322,6 +407,7 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
     if (enabled != _shuffle) toggleShuffle();
   }
 
+  @override
   void toggleShuffle() {
     _shuffle = !_shuffle;
     final anchor = currentIndex;
@@ -415,6 +501,7 @@ class PlayerService extends BaseAudioHandler with ChangeNotifier {
   Future<bool> _playCurrent({bool autoplay = true}) async {
     final track = current;
     if (track == null) return false;
+    _reachedEnd = false;
     final level = _level;
     final revision = ++_sourceRevision;
     _advancing = true;

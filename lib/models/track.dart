@@ -13,6 +13,8 @@ class Track {
     this.albumArtUrl,
     this.fee = 0,
     this.playableUrl,
+    this.albumId,
+    this.artistIds = const [],
   });
 
   final int id;
@@ -28,36 +30,50 @@ class Track {
   /// Resolved playback URL (populated on demand via the song/url endpoint).
   final String? playableUrl;
 
+  /// Album id, when known and non-zero (cloud uploads and programs lack one).
+  final int? albumId;
+
+  /// Artist ids, parallel to [artists]; 0 where the server gave none.
+  final List<int> artistIds;
+
   String get artistLabel => artists.join(' / ');
   Duration get duration => Duration(milliseconds: durationMs);
+  bool get isVip => fee == 1;
 
   Track copyWith({String? playableUrl, String? albumArtUrl}) => Track(
-        id: id,
-        name: name,
-        artists: artists,
-        album: album,
-        durationMs: durationMs,
-        albumArtUrl: albumArtUrl ?? this.albumArtUrl,
-        fee: fee,
-        playableUrl: playableUrl ?? this.playableUrl,
-      );
+    id: id,
+    name: name,
+    artists: artists,
+    album: album,
+    durationMs: durationMs,
+    albumArtUrl: albumArtUrl ?? this.albumArtUrl,
+    fee: fee,
+    playableUrl: playableUrl ?? this.playableUrl,
+    albumId: albumId,
+    artistIds: artistIds,
+  );
 
   factory Track.fromJson(Map<String, dynamic> j) {
     // Artists: modern `ar`, legacy `artists`.
     final rawArtists = (j['ar'] ?? j['artists']) as List? ?? const [];
-    final artists = rawArtists
-        .map((a) => (a['name'] ?? '').toString())
-        .where((s) => s.isNotEmpty)
+    final named = rawArtists
+        .whereType<Map>()
+        .where((a) => (a['name'] ?? '').toString().isNotEmpty)
         .toList();
 
     // Album: modern `al`, legacy `album`.
     final al = (j['al'] ?? j['album']) as Map? ?? const {};
+    final albumId = (al['id'] as num?)?.toInt();
 
     return Track(
       id: (j['id'] as num).toInt(),
       name: (j['name'] ?? '').toString(),
-      artists: artists.isEmpty ? const ['未知艺术家'] : artists,
+      artists: named.isEmpty
+          ? const ['未知艺术家']
+          : [for (final a in named) a['name'].toString()],
+      artistIds: [for (final a in named) (a['id'] as num?)?.toInt() ?? 0],
       album: (al['name'] ?? '').toString(),
+      albumId: albumId == null || albumId == 0 ? null : albumId,
       durationMs: ((j['dt'] ?? j['duration'] ?? 0) as num).toInt(),
       albumArtUrl: (al['picUrl'] ?? j['picUrl'])?.toString(),
       fee: ((j['fee'] ?? 0) as num).toInt(),

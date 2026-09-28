@@ -9,6 +9,7 @@ import 'login_screen.dart';
 import 'now_playing_bar.dart';
 import 'search_screen.dart';
 import 'settings_screen.dart';
+import 'widgets/miuix_extras.dart';
 
 /// Root scaffold: adaptive navigation (bottom bar on narrow, rail on wide)
 /// across Discover / Search / Library / Settings, with a persistent mini-player.
@@ -117,11 +118,7 @@ class _RailHeader extends StatelessWidget {
     final loggedIn = app.status == AuthStatus.loggedIn;
     return Column(
       children: [
-        const Text(
-          'NSNC',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         MiuixSurface(
           cornerRadius: 24,
           onPressed: () => _onAccountTap(context, loggedIn),
@@ -151,18 +148,13 @@ class _RailHeader extends StatelessWidget {
 
   Future<void> _onAccountTap(BuildContext context, bool loggedIn) async {
     if (loggedIn) {
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (c) => AlertDialog(
-          title: const Text('退出登录'),
-          content: const Text('确定要退出当前账号吗？'),
-          actions: [
-            MiuixTextButton('取消', onPressed: () => Navigator.pop(c, false)),
-            MiuixTextButton('退出', onPressed: () => Navigator.pop(c, true)),
-          ],
-        ),
+      final confirm = await showMiuixConfirm(
+        context,
+        title: '退出登录',
+        message: '确定要退出当前账号吗？',
+        confirmLabel: '退出',
       );
-      if (confirm == true && context.mounted) {
+      if (confirm && context.mounted) {
         await context.read<AppState>().logout();
       }
     } else {

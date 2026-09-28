@@ -38,6 +38,27 @@ class PlaylistRepository {
     return playlists;
   }
 
+  /// Drop every cached page of [uid]'s liked-songs playlist, so the next
+  /// visit rebuilds it from the server after a like/unlike.
+  Future<void> invalidateLikedSongs(int uid) async {
+    final ids = <int>{};
+    final marker = (await _cache.read(_likedKey(uid)))?['playlistId'];
+    if (marker is num) ids.add(marker.toInt());
+    // Fallback for caches written before the marker existed (or trimmed).
+    final playlists = (await _cache.read('user:$uid:playlists'))?['playlists'];
+    if (playlists is List) {
+      for (final p in playlists.whereType<Map>()) {
+        final id = p['id'];
+        if (p['specialType'] == 5 && id is num) ids.add(id.toInt());
+      }
+    }
+    for (final id in ids) {
+      await _cache.removePrefix('playlist:$id:');
+    }
+  }
+
+  static String _likedKey(int uid) => 'user:$uid:likedPlaylist';
+
   Future<PlaylistPage> page({
     required int playlistId,
     required int page,
@@ -47,6 +68,13 @@ class PlaylistRepository {
     if (page < 0) throw RangeError.value(page, 'page');
     final prefix = 'playlist:$playlistId:';
     if (refresh) await _cache.removePrefix(prefix);
+    if (likedSongsUid != null) {
+      final key = _likedKey(likedSongsUid);
+      final known = (await _cache.read(key))?['playlistId'];
+      if (known != playlistId) {
+        await _cache.write(key, {'playlistId': playlistId});
+      }
+    }
 
     final ids = await _trackIds(playlistId, likedSongsUid: likedSongsUid);
     final offset = page * pageSize;
@@ -83,16 +111,63 @@ class PlaylistRepository {
 
     final List<int> ids;
     if (likedSongsUid == null) {
-      ids = await _client.playlistTrackIds(playlistId);
+      final detail = await _client.playlistDetail(playlistId);
+      await _writeMeta(playlistId, detail);
+      ids = _idsOf(detail);
     } else {
-      final responses = await Future.wait([
-        _client.playlistTrackIds(playlistId),
+      final responses = await Future.wait<Object>([
+        _client.playlistDetail(playlistId),
         _client.likedSongIds(likedSongsUid),
       ]);
-      ids = _orderedLikedIds(responses[0], responses[1]);
+      final detail = responses[0] as Map<String, dynamic>;
+      await _writeMeta(playlistId, detail);
+      ids = _orderedLikedIds(_idsOf(detail), responses[1] as List<int>);
     }
     await _cache.write(key, {'orderVersion': expectedOrderVersion, 'ids': ids});
     return ids;
+  }
+
+  /// Display metadata (name, cover, description, creator, counts).
+  Future<Map<String, dynamic>> meta(
+    int playlistId, {
+    bool refresh = false,
+  }) async {
+    final key = 'playlist:$playlistId:meta';
+    if (!refresh) {
+      final cached = await _cache.read(key);
+      if (cached != null) return cached;
+    }
+    final detail = await _client.playlistDetail(playlistId);
+    return _writeMeta(playlistId, detail);
+  }
+
+  Future<Map<String, dynamic>> _writeMeta(
+    int playlistId,
+    Map<String, dynamic> detail,
+  ) async {
+    final p = (detail['playlist'] as Map?) ?? const {};
+    final creator = p['creator'] as Map?;
+    final meta = <String, dynamic>{
+      'name': p['name'],
+      'coverImgUrl': p['coverImgUrl'],
+      'description': p['description'],
+      'creator': creator?['nickname'],
+      'creatorAvatar': creator?['avatarUrl'],
+      'trackCount': p['trackCount'],
+      'playCount': p['playCount'],
+      'subscribedCount': p['subscribedCount'],
+      'updateTime': p['updateTime'] ?? p['trackUpdateTime'],
+      'tags': p['tags'],
+    };
+    await _cache.write('playlist:$playlistId:meta', meta);
+    return meta;
+  }
+
+  static List<int> _idsOf(Map<String, dynamic> detail) {
+    final trackIds = (detail['playlist']?['trackIds'] as List?) ?? const [];
+    return trackIds
+        .map((item) => ((item as Map)['id'] as num).toInt())
+        .toList(growable: false);
   }
 
   static List<int> _orderedLikedIds(
