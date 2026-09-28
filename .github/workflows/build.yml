@@ -63,6 +63,8 @@ jobs:
             -d "IconPath=windows\runner\resources\app_icon.ico" `
             -o "dist\$name.msi"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # WiX debug symbols; not something users should download.
+          Remove-Item dist\*.wixpdb -ErrorAction SilentlyContinue
           Get-ChildItem dist | Format-Table Name, Length
           "ARTIFACT=$name" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
