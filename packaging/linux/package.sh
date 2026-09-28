@@ -102,8 +102,12 @@ build_appimage() {
   install -m644 "$work/icon-256.png" "$appdir/$app_id.png"
 
   # Bundle libmpv plus the dependencies the host is not expected to have.
+  # libjack is on linuxdeploy's exclude list, but libmpv links it directly and
+  # most desktops (PipeWire/Pulse only) do not ship it, so force it in.
   fetch "$LINUXDEPLOY_URL" "$LINUXDEPLOY_SHA" "$work/linuxdeploy"
-  "$work/linuxdeploy" --appdir "$appdir" --library /usr/lib/x86_64-linux-gnu/libmpv.so.2
+  "$work/linuxdeploy" --appdir "$appdir" \
+    --library /usr/lib/x86_64-linux-gnu/libmpv.so.2 \
+    --library /usr/lib/x86_64-linux-gnu/libjack.so.0
   # The host's C++ runtime is already loaded by Flutter; never shadow it.
   rm -f "$appdir"/usr/lib/libstdc++.so* "$appdir"/usr/lib/libgcc_s.so*
   # Only libmpv goes on the search path. Its own deps resolve through

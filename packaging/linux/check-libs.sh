@@ -13,7 +13,7 @@ if [ -n "${2:-}" ]; then
 fi
 
 fail=0
-for f in "$app/nsnc" "$app"/lib/*.so; do
+for f in "$app/nsnc" "$app"/lib/*.so ${2:+"$2"/*.so*}; do
   # Plugins find libflutter_linux_gtk.so through the executable's
   # RUNPATH ($ORIGIN/lib) at runtime, so give ldd the same directory.
   # libdartjni.so (from package:jni) only needs libjvm when a JVM is used,
