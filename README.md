@@ -46,6 +46,9 @@ flutter run -d windows      # or macos / linux / <device-id>
 Login is QR-based: open the login screen, scan with the Netease Cloud Music app,
 confirm on your phone. The session persists across restarts.
 
+Release packages (Windows, Linux, macOS, Android) are built by GitHub Actions
+and published on `v*` tags; see [Building and releasing](docs/building-and-releasing.md).
+
 ## Verifying
 
 ```sh
