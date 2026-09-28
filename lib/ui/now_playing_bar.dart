@@ -32,8 +32,9 @@ class NowPlayingBar extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
       child: MiuixSurface(
-        color: cs.surfaceContainerHigh,
-        cornerRadius: 16,
+        color: MiuixTheme.of(context).colors.surfaceContainer,
+        cornerRadius: 18,
+        shadowElevation: 6,
         onPressed: () => Navigator.of(
           context,
         ).push(MaterialPageRoute<void>(builder: (_) => const PlayerScreen())),
@@ -136,12 +137,11 @@ class NowPlayingBar extends StatelessWidget {
                     final progress = duration.inMilliseconds > 0
                         ? position.inMilliseconds / duration.inMilliseconds
                         : 0.0;
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(2),
-                      child: LinearProgressIndicator(
-                        value: progress.clamp(0.0, 1.0),
-                        minHeight: 2.5,
-                        backgroundColor: cs.onSurface.withValues(alpha: 0.08),
+                    return SizedBox(
+                      width: double.infinity,
+                      child: MiuixLinearProgressIndicator(
+                        progress: progress.clamp(0.0, 1.0),
+                        height: 3,
                       ),
                     );
                   },

@@ -4,6 +4,7 @@ import 'package:flutter_miuix/miuix.dart';
 import '../../models/media_item.dart';
 import '../../services/ui_preferences.dart';
 import 'common.dart';
+import 'miuix_extras.dart';
 
 IconData mediaIcon(MediaKind kind) => switch (kind) {
   MediaKind.playlist => Icons.queue_music_rounded,
@@ -200,7 +201,7 @@ class MediaCollection extends StatelessWidget {
       switchInCurve: Curves.easeOutCubic,
       child: layout == CollectionLayout.grid
           ? _grid(context)
-          : Column(
+          : GroupCard(
               key: const ValueKey('list'),
               children: [
                 for (final item in items)
@@ -269,17 +270,17 @@ class MediaRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final colors = MiuixTheme.of(context).colors;
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         child: Row(
           children: [
             CoverArt(
               url: item.coverUrl,
-              size: 56,
+              size: 52,
               circle: item.kind == MediaKind.artist,
               icon: mediaIcon(item.kind),
               imageSize: 160,
@@ -294,8 +295,10 @@ class MediaRow extends StatelessWidget {
                     item.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: colors.onSurface,
                     ),
                   ),
                   if (item.subtitle.isNotEmpty)
@@ -305,8 +308,9 @@ class MediaRow extends StatelessWidget {
                         item.subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colors.onSurfaceVariantSummary,
                         ),
                       ),
                     ),
@@ -316,9 +320,7 @@ class MediaRow extends StatelessWidget {
             trailing ??
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.6,
-                  ),
+                  color: colors.onSurfaceVariantActions,
                 ),
           ],
         ),

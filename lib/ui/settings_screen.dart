@@ -10,6 +10,7 @@ import '../services/download_location_service.dart';
 import '../services/ui_preferences.dart';
 import 'login_screen.dart';
 import 'widgets/common.dart';
+import 'widgets/miuix_extras.dart';
 
 enum _SettingsDialog { androidLocation, iosInfo }
 
@@ -47,65 +48,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               const _AccountSettings(),
               const _AppearanceSettings(),
-              const MiuixHorizontalDivider(),
               const MiuixSmallTitle('下载'),
-              MiuixArrowPreference(
-                title: '下载位置',
-                summary:
-                    '${settings.downloadLocationLabel}\n${settings.downloadLocationHint}',
-                startAction: const Icon(Icons.folder_outlined),
-                endActions:
-                    settings.usesAndroidDownloadCollections ||
-                        settings.canChooseDownloadDirectory
-                    ? null
-                    : const [Icon(Icons.info_outline)],
-                onClick: () => unawaited(_changeDownloadLocation(settings)),
+              GroupCard(
+                children: [
+                  MiuixArrowPreference(
+                    title: '下载位置',
+                    summary:
+                        '${settings.downloadLocationLabel}\n${settings.downloadLocationHint}',
+                    startAction: const _PrefIcon(
+                      Icons.folder_rounded,
+                      Color(0xFF3482FF),
+                    ),
+                    endActions:
+                        settings.usesAndroidDownloadCollections ||
+                            settings.canChooseDownloadDirectory
+                        ? null
+                        : const [Icon(Icons.info_outline)],
+                    onClick: () => unawaited(_changeDownloadLocation(settings)),
+                  ),
+                ],
               ),
-              const MiuixHorizontalDivider(),
               const MiuixSmallTitle('缓存'),
-              _LimitPreference(
-                title: '封面缓存上限',
-                summary: '磁盘 LRU；最多同时下载 4 张封面',
-                value: settings.coverLimitMiB,
-                options: _coverOptions,
-                onChanged: settings.setCoverLimitMiB,
+              GroupCard(
+                children: [
+                  _LimitPreference(
+                    title: '封面缓存上限',
+                    summary: '磁盘 LRU；最多同时下载 4 张封面',
+                    value: settings.coverLimitMiB,
+                    options: _coverOptions,
+                    onChanged: settings.setCoverLimitMiB,
+                  ),
+                  _LimitPreference(
+                    title: '歌单缓存上限',
+                    summary: '缓存歌单索引与每 100 首一页的歌曲信息',
+                    value: settings.playlistLimitMiB,
+                    options: _playlistOptions,
+                    onChanged: settings.setPlaylistLimitMiB,
+                  ),
+                  _LimitPreference(
+                    title: '音频缓存上限',
+                    summary: '播放过的音频按最近使用时间淘汰；下载歌曲不计入上限',
+                    value: settings.audioLimitMiB,
+                    options: _audioOptions,
+                    onChanged: settings.setAudioLimitMiB,
+                  ),
+                ],
               ),
-              _LimitPreference(
-                title: '歌单缓存上限',
-                summary: '缓存歌单索引与每 100 首一页的歌曲信息',
-                value: settings.playlistLimitMiB,
-                options: _playlistOptions,
-                onChanged: settings.setPlaylistLimitMiB,
-              ),
-              _LimitPreference(
-                title: '音频缓存上限',
-                summary: '播放过的音频按最近使用时间淘汰；下载歌曲不计入上限',
-                value: settings.audioLimitMiB,
-                options: _audioOptions,
-                onChanged: settings.setAudioLimitMiB,
-              ),
-              const MiuixHorizontalDivider(),
-              MiuixBasicComponent(
-                title: '清空封面缓存',
-                startAction: const Icon(Icons.image_outlined),
-                onClick: () => unawaited(
-                  _clear(action: settings.clearCovers, message: '封面缓存已清空'),
-                ),
-              ),
-              MiuixBasicComponent(
-                title: '清空歌单缓存',
-                startAction: const Icon(Icons.queue_music_outlined),
-                onClick: () => unawaited(
-                  _clear(action: settings.clearPlaylists, message: '歌单缓存已清空'),
-                ),
-              ),
-              MiuixBasicComponent(
-                title: '清空音频缓存',
-                summary: '不会删除手动下载的歌曲',
-                startAction: const Icon(Icons.audio_file_outlined),
-                onClick: () => unawaited(
-                  _clear(action: settings.clearAudioCache, message: '音频缓存已清空'),
-                ),
+              GroupCard(
+                children: [
+                  MiuixArrowPreference(
+                    title: '清空封面缓存',
+                    startAction: const _PrefIcon(
+                      Icons.image_rounded,
+                      Color(0xFFF08C2E),
+                    ),
+                    onClick: () => unawaited(
+                      _clear(action: settings.clearCovers, message: '封面缓存已清空'),
+                    ),
+                  ),
+                  MiuixArrowPreference(
+                    title: '清空歌单缓存',
+                    startAction: const _PrefIcon(
+                      Icons.queue_music_rounded,
+                      Color(0xFF8B5CF6),
+                    ),
+                    onClick: () => unawaited(
+                      _clear(
+                        action: settings.clearPlaylists,
+                        message: '歌单缓存已清空',
+                      ),
+                    ),
+                  ),
+                  MiuixArrowPreference(
+                    title: '清空音频缓存',
+                    summary: '不会删除手动下载的歌曲',
+                    startAction: const _PrefIcon(
+                      Icons.audio_file_rounded,
+                      Color(0xFF14B8A6),
+                    ),
+                    onClick: () => unawaited(
+                      _clear(
+                        action: settings.clearAudioCache,
+                        message: '音频缓存已清空',
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -263,95 +291,156 @@ class _AppearanceSettings extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const MiuixSmallTitle('外观'),
-        MiuixOverlayDropdownPreference(
-          title: '深色模式',
-          items: [for (final m in _themeModes) m.$2],
-          selectedIndex: _themeModes.indexWhere((m) => m.$1 == prefs.themeMode),
-          onSelectedIndexChange: (i) =>
-              unawaited(prefs.setThemeMode(_themeModes[i].$1)),
-        ),
-        MiuixBasicComponent(
-          title: '主题色',
-          summary: isWallpaper
-              ? '跟随系统壁纸取色（Android 12+，其他平台使用默认色）'
-              : prefs.accent.label,
-          bottomAction: Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                for (final accent in NsncAccent.values)
-                  _AccentSwatch(
-                    accent: accent,
-                    selected: accent == prefs.accent,
-                    onTap: () => unawaited(prefs.setAccent(accent)),
-                  ),
-              ],
+        GroupCard(
+          children: [
+            MiuixOverlayDropdownPreference(
+              title: '深色模式',
+              startAction: const _PrefIcon(
+                Icons.dark_mode_rounded,
+                Color(0xFF475569),
+              ),
+              items: [for (final m in _themeModes) m.$2],
+              selectedIndex: _themeModes.indexWhere(
+                (m) => m.$1 == prefs.themeMode,
+              ),
+              onSelectedIndexChange: (i) =>
+                  unawaited(prefs.setThemeMode(_themeModes[i].$1)),
             ),
-          ),
-        ),
-        if (prefs.accent != NsncAccent.miuix)
-          MiuixOverlayDropdownPreference(
-            title: '色彩风格',
-            summary: '由主题色生成整套配色的方式',
-            items: [for (final p in PaletteStyle.values) p.label],
-            selectedIndex: prefs.palette.index,
-            onSelectedIndexChange: (i) =>
-                unawaited(prefs.setPalette(PaletteStyle.values[i])),
-          ),
-        MiuixOverlayDropdownPreference(
-          title: '封面圆角',
-          items: [for (final c in CoverCorner.values) c.label],
-          selectedIndex: prefs.coverCorner.index,
-          onSelectedIndexChange: (i) =>
-              unawaited(prefs.setCoverCorner(CoverCorner.values[i])),
-        ),
-        MiuixOverlayDropdownPreference(
-          title: '默认列表样式',
-          summary: '歌单、榜单与电台的默认展示方式；各页面右上角可单独切换',
-          items: const ['列表', '卡片'],
-          selectedIndex: prefs.defaultLayout == CollectionLayout.list ? 0 : 1,
-          onSelectedIndexChange: (i) => unawaited(
-            prefs.setDefaultLayout(
-              i == 0 ? CollectionLayout.list : CollectionLayout.grid,
+            MiuixBasicComponent(
+              title: '主题色',
+              startAction: _PrefIcon(
+                Icons.format_color_fill_rounded,
+                prefs.accent.color,
+              ),
+              summary: isWallpaper
+                  ? '跟随系统壁纸取色（Android 12+，其他平台使用默认色）'
+                  : prefs.accent.label,
+              bottomAction: Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final accent in NsncAccent.values)
+                      _AccentSwatch(
+                        accent: accent,
+                        selected: accent == prefs.accent,
+                        onTap: () => unawaited(prefs.setAccent(accent)),
+                      ),
+                  ],
+                ),
+              ),
             ),
-          ),
+            if (prefs.accent != NsncAccent.wallpaper)
+              MiuixOverlayDropdownPreference(
+                title: '色彩风格',
+                summary: 'HyperOS 中性只着色强调色，Monet 全局取色',
+                startAction: const _PrefIcon(
+                  Icons.palette_rounded,
+                  Color(0xFF8B5CF6),
+                ),
+                items: [for (final p in PaletteStyle.values) p.label],
+                selectedIndex: prefs.palette.index,
+                onSelectedIndexChange: (i) =>
+                    unawaited(prefs.setPalette(PaletteStyle.values[i])),
+              ),
+            MiuixOverlayDropdownPreference(
+              title: '封面圆角',
+              startAction: const _PrefIcon(
+                Icons.rounded_corner_rounded,
+                Color(0xFF14B8A6),
+              ),
+              items: [for (final c in CoverCorner.values) c.label],
+              selectedIndex: prefs.coverCorner.index,
+              onSelectedIndexChange: (i) =>
+                  unawaited(prefs.setCoverCorner(CoverCorner.values[i])),
+            ),
+            MiuixOverlayDropdownPreference(
+              title: '默认列表样式',
+              summary: '各页面右上角可单独切换',
+              startAction: const _PrefIcon(
+                Icons.grid_view_rounded,
+                Color(0xFF3482FF),
+              ),
+              items: const ['列表', '卡片'],
+              selectedIndex: prefs.defaultLayout == CollectionLayout.list
+                  ? 0
+                  : 1,
+              onSelectedIndexChange: (i) => unawaited(
+                prefs.setDefaultLayout(
+                  i == 0 ? CollectionLayout.list : CollectionLayout.grid,
+                ),
+              ),
+            ),
+          ],
         ),
-        const MiuixHorizontalDivider(),
         const MiuixSmallTitle('发现页模块'),
-        for (final section in HomeSection.values)
-          MiuixSwitchPreference(
-            title: section.label,
-            summary: section == HomeSection.daily ? '需要登录' : null,
-            value: prefs.showsSection(section),
-            onChanged: (v) => unawaited(prefs.setSection(section, v)),
-          ),
-        const MiuixHorizontalDivider(),
+        GroupCard(
+          children: [
+            for (final section in HomeSection.values)
+              MiuixSwitchPreference(
+                title: section.label,
+                summary: section == HomeSection.daily ? '需要登录' : null,
+                value: prefs.showsSection(section),
+                onChanged: (v) => unawaited(prefs.setSection(section, v)),
+              ),
+          ],
+        ),
         const MiuixSmallTitle('播放页'),
-        MiuixOverlayDropdownPreference(
-          title: '播放页背景',
-          items: [for (final b in PlayerBackground.values) b.label],
-          selectedIndex: prefs.playerBackground.index,
-          onSelectedIndexChange: (i) =>
-              unawaited(prefs.setPlayerBackground(PlayerBackground.values[i])),
-        ),
-        MiuixSliderPreference(
-          title: '歌词字号',
-          value: prefs.lyricScale,
-          min: 0.8,
-          max: 1.6,
-          steps: 7,
-          valueText: '${(prefs.lyricScale * 100).round()}%',
-          onValueChange: (v) => unawaited(prefs.setLyricScale(v)),
-        ),
-        MiuixSwitchPreference(
-          title: '显示歌词翻译',
-          summary: '外文歌曲在原文下方显示中文翻译',
-          value: prefs.showTranslation,
-          onChanged: (v) => unawaited(prefs.setShowTranslation(v)),
+        GroupCard(
+          children: [
+            MiuixOverlayDropdownPreference(
+              title: '播放页背景',
+              items: [for (final b in PlayerBackground.values) b.label],
+              selectedIndex: prefs.playerBackground.index,
+              onSelectedIndexChange: (i) => unawaited(
+                prefs.setPlayerBackground(PlayerBackground.values[i]),
+              ),
+            ),
+            MiuixSliderPreference(
+              title: '歌词字号',
+              value: prefs.lyricScale,
+              min: 0.8,
+              max: 1.6,
+              steps: 7,
+              valueText: '${(prefs.lyricScale * 100).round()}%',
+              onValueChange: (v) => unawaited(prefs.setLyricScale(v)),
+            ),
+            MiuixSwitchPreference(
+              title: '显示歌词翻译',
+              summary: '外文歌曲在原文下方显示中文翻译',
+              value: prefs.showTranslation,
+              onChanged: (v) => unawaited(prefs.setShowTranslation(v)),
+            ),
+          ],
         ),
       ],
+    );
+  }
+}
+
+/// Coloured squircle icon used as a preference's leading action.
+class _PrefIcon extends StatelessWidget {
+  const _PrefIcon(this.icon, this.color);
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: ShapeDecoration(
+          color: color,
+          shape: RoundedSuperellipseBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        child: Icon(icon, color: Colors.white, size: 19),
+      ),
     );
   }
 }
@@ -441,43 +530,43 @@ class _AccountSettings extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const MiuixSmallTitle('账号'),
-        MiuixArrowPreference(
-          title: loggedIn ? app.nickname : '未登录',
-          summary: loggedIn ? '点击退出登录' : '扫码或手机号登录网易云音乐',
-          startAction: Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: CoverArt(
-              url: loggedIn ? app.avatarUrl : null,
-              size: 40,
-              circle: true,
-              icon: Icons.person_rounded,
-              imageSize: 120,
-            ),
-          ),
-          onClick: () => loggedIn
-              ? _confirmLogout(context)
-              : Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+        GroupCard(
+          children: [
+            MiuixArrowPreference(
+              title: loggedIn ? app.nickname : '未登录',
+              summary: loggedIn ? '点击退出登录' : '扫码或手机号登录网易云音乐',
+              startAction: Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: CoverArt(
+                  url: loggedIn ? app.avatarUrl : null,
+                  size: 44,
+                  circle: true,
+                  icon: Icons.person_rounded,
+                  imageSize: 120,
                 ),
+              ),
+              onClick: () => loggedIn
+                  ? _confirmLogout(context)
+                  : Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const LoginScreen(),
+                      ),
+                    ),
+            ),
+          ],
         ),
-        const MiuixHorizontalDivider(),
       ],
     );
   }
 
   Future<void> _confirmLogout(BuildContext context) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('退出登录'),
-        content: const Text('确定要退出当前账号吗？'),
-        actions: [
-          MiuixTextButton('取消', onPressed: () => Navigator.pop(c, false)),
-          MiuixTextButton('退出', onPressed: () => Navigator.pop(c, true)),
-        ],
-      ),
+    final confirm = await showMiuixConfirm(
+      context,
+      title: '退出登录',
+      message: '确定要退出当前账号吗？',
+      confirmLabel: '退出',
     );
-    if (confirm == true && context.mounted) {
+    if (confirm && context.mounted) {
       await context.read<AppState>().logout();
     }
   }

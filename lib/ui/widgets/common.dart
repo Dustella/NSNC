@@ -105,7 +105,7 @@ class SectionHeader extends StatelessWidget {
     this.subtitle,
     this.onMore,
     this.trailing = const [],
-    this.padding = const EdgeInsets.fromLTRB(20, 20, 12, 10),
+    this.padding = const EdgeInsets.fromLTRB(24, 16, 12, 8),
   });
 
   final String title;
@@ -116,11 +116,11 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final colors = MiuixTheme.of(context).colors;
     return Padding(
       padding: padding,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
             child: Column(
@@ -131,18 +131,23 @@ class SectionHeader extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 20,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: colors.onSurface,
                   ),
                 ),
                 if (subtitle != null && subtitle!.isNotEmpty)
-                  Text(
-                    subtitle!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Text(
+                      subtitle!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: colors.onSurfaceVariantSummary,
+                      ),
                     ),
                   ),
               ],
@@ -150,18 +155,28 @@ class SectionHeader extends StatelessWidget {
           ),
           ...trailing,
           if (onMore != null)
-            TextButton(
-              onPressed: onMore,
-              style: TextButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                foregroundColor: theme.colorScheme.onSurfaceVariant,
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('更多'),
-                  Icon(Icons.chevron_right_rounded, size: 18),
-                ],
+            InkWell(
+              onTap: onMore,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '更多',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        color: colors.onSurfaceVariantSummary,
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: colors.onSurfaceVariantActions,
+                    ),
+                  ],
+                ),
               ),
             ),
         ],
@@ -203,15 +218,24 @@ class LayoutToggle extends StatelessWidget {
 
 /// Soft blurred artwork behind detail headers and the player.
 class BlurredCover extends StatelessWidget {
-  const BlurredCover({super.key, required this.url, this.sigma = 48});
+  const BlurredCover({
+    super.key,
+    required this.url,
+    this.sigma = 48,
+    this.strength = 0.5,
+  });
 
   final String? url;
   final double sigma;
+
+  /// 0..1: how much of the artwork colour shows through the surface wash.
+  final double strength;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (url == null || url!.isEmpty) return ColoredBox(color: cs.surface);
+    final dark = Theme.of(context).brightness == Brightness.dark;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -223,9 +247,7 @@ class BlurredCover extends StatelessWidget {
             tileMode: TileMode.decal,
           ),
           child: Opacity(
-            opacity: Theme.of(context).brightness == Brightness.dark
-                ? 0.55
-                : 0.45,
+            opacity: (dark ? 0.6 : 0.5) + 0.4 * (strength - 0.5).clamp(0, 1),
             child: LazyNetworkImage(
               url: sizedCoverUrl(url, 200),
               placeholder: const SizedBox.shrink(),
@@ -238,9 +260,9 @@ class BlurredCover extends StatelessWidget {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                cs.surface.withValues(alpha: 0.15),
-                cs.surface.withValues(alpha: 0.75),
-                cs.surface,
+                cs.surface.withValues(alpha: 0.3 * (1 - strength)),
+                cs.surface.withValues(alpha: 0.9 - 0.5 * strength),
+                cs.surface.withValues(alpha: 1 - 0.4 * strength),
               ],
               stops: const [0, 0.65, 1],
             ),

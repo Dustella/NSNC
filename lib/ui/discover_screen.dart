@@ -13,6 +13,7 @@ import 'navigation.dart';
 import 'track_list_screen.dart';
 import 'widgets/common.dart';
 import 'widgets/media_widgets.dart';
+import 'widgets/miuix_extras.dart';
 import 'widgets/track_widgets.dart';
 
 /// Landing page: greeting, quick entries, daily picks and discovery
@@ -90,15 +91,18 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     void open(MediaItem item) => openMedia(context, item, uid: app.uid);
 
     return MiuixScaffold(
-      topBar: const MiuixTopAppBar(title: '发现'),
+      topBar: MiuixTopAppBar(
+        title: '发现',
+        largeTitle: _greeting(loggedIn ? app.nickname : null),
+      ),
       content: (padding) => Padding(
         padding: padding,
         child: RefreshIndicator(
           onRefresh: _refresh,
           child: ListView(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.only(top: 4, bottom: 24),
             children: [
-              _Greeting(name: loggedIn ? app.nickname : null),
+              if (!loggedIn) const _GuestHint(),
               if (prefs.showsSection(HomeSection.quickAccess))
                 _QuickAccess(loggedIn: loggedIn),
               if (loggedIn && prefs.showsSection(HomeSection.daily))
@@ -234,43 +238,29 @@ class _Skeleton extends StatelessWidget {
   }
 }
 
-class _Greeting extends StatelessWidget {
-  const _Greeting({required this.name});
+String _greeting(String? name) {
+  final hour = DateTime.now().hour;
+  final hello = switch (hour) {
+    < 5 => '夜深了',
+    < 11 => '早上好',
+    < 13 => '中午好',
+    < 18 => '下午好',
+    _ => '晚上好',
+  };
+  return name == null ? hello : '$hello，$name';
+}
 
-  final String? name;
+class _GuestHint extends StatelessWidget {
+  const _GuestHint();
 
   @override
   Widget build(BuildContext context) {
-    final hour = DateTime.now().hour;
-    final hello = switch (hour) {
-      < 5 => '夜深了',
-      < 11 => '早上好',
-      < 13 => '中午好',
-      < 18 => '下午好',
-      _ => '晚上好',
-    };
-    final theme = Theme.of(context);
+    final colors = MiuixTheme.of(context).colors;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            name == null ? hello : '$hello，$name',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            name == null ? '登录后解锁每日推荐、私人 FM 与音乐云盘' : '今天想听点什么？',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      child: Text(
+        '登录后解锁每日推荐、私人 FM 与音乐云盘',
+        style: TextStyle(fontSize: 14, color: colors.onSurfaceVariantSummary),
       ),
     );
   }
@@ -283,82 +273,49 @@ class _QuickAccess extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tiles = <Widget>[
-      if (loggedIn)
-        QuickTile(
-          label: '私人 FM',
-          icon: Icons.radio_rounded,
-          color: cs.primary,
-          onTap: () => openPersonalFm(context),
+    return ShortcutGrid(
+      items: [
+        if (loggedIn)
+          Shortcut(
+            '私人 FM',
+            Icons.radio_rounded,
+            const Color(0xFFE5484D),
+            () => openPersonalFm(context),
+          ),
+        if (loggedIn)
+          Shortcut(
+            '每日推荐',
+            Icons.calendar_today_rounded,
+            const Color(0xFFF08C2E),
+            () => openDailySongs(context),
+          ),
+        Shortcut(
+          '排行榜',
+          Icons.bar_chart_rounded,
+          const Color(0xFF3482FF),
+          () => openCharts(context),
         ),
-      if (loggedIn)
-        QuickTile(
-          label: '每日推荐',
-          icon: Icons.today_rounded,
-          color: const Color(0xFFE0703A),
-          onTap: () => openDailySongs(context),
+        Shortcut(
+          '电台',
+          Icons.podcasts_rounded,
+          const Color(0xFF8B5CF6),
+          () => openRadioHub(context),
         ),
-      QuickTile(
-        label: '排行榜',
-        icon: Icons.leaderboard_rounded,
-        color: const Color(0xFF3A7BD5),
-        onTap: () => openCharts(context),
-      ),
-      QuickTile(
-        label: '电台',
-        icon: Icons.podcasts_rounded,
-        color: const Color(0xFF8E5CC4),
-        onTap: () => openRadioHub(context),
-      ),
-      if (loggedIn)
-        QuickTile(
-          label: '音乐云盘',
-          icon: Icons.cloud_rounded,
-          color: const Color(0xFF26A69A),
-          onTap: () => openCloud(context),
-        ),
-      if (loggedIn)
-        QuickTile(
-          label: '最近播放',
-          icon: Icons.history_rounded,
-          color: const Color(0xFF607D8B),
-          onTap: () => openRecentSongs(context),
-        ),
-    ];
-    return LayoutBuilder(
-      builder: (context, c) {
-        final columns = c.maxWidth >= 900
-            ? 3
-            : c.maxWidth >= 360
-            ? 2
-            : 1;
-        final rows = <Widget>[];
-        for (var i = 0; i < tiles.length; i += columns) {
-          rows.add(
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var j = i; j < i + columns; j++) ...[
-                    if (j > i) const SizedBox(width: 8),
-                    Expanded(
-                      child: j < tiles.length
-                          ? tiles[j]
-                          : const SizedBox.shrink(),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          );
-        }
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(children: rows),
-        );
-      },
+        if (loggedIn)
+          Shortcut(
+            '音乐云盘',
+            Icons.cloud_rounded,
+            const Color(0xFF14B8A6),
+            () => openCloud(context),
+          ),
+        if (loggedIn)
+          Shortcut(
+            '最近播放',
+            Icons.history_rounded,
+            const Color(0xFF64748B),
+            () => openRecentSongs(context),
+          ),
+      ],
     );
   }
 }
@@ -370,107 +327,103 @@ class _DailyHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
+    final colors = MiuixTheme.of(context).colors;
     final now = DateTime.now();
-    final covers = tracks
+    final cover = tracks
         .map((t) => t.albumArtUrl)
         .whereType<String>()
-        .take(3)
-        .toList();
+        .firstOrNull;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Material(
-        color: cs.primaryContainer,
-        borderRadius: BorderRadius.circular(22),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => openDailySongs(context),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Row(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: MiuixCard(
+        cornerRadius: 16,
+        insideMargin: const EdgeInsets.all(14),
+        onPressed: () => openDailySongs(context),
+        child: Row(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${now.day}'.padLeft(2, '0'),
-                        style: theme.textTheme.displaySmall?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          color: cs.onPrimaryContainer,
-                          height: 1,
-                        ),
+                CoverArt(url: cover, size: 76, radius: 12, imageSize: 240),
+                Positioned(
+                  left: 6,
+                  bottom: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '${now.day}'.padLeft(2, '0'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
                       ),
-                      Text(
-                        '${now.month} 月 · 每日推荐',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: cs.onPrimaryContainer,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '${tracks.length} 首 · ${tracks.take(2).map((t) => t.name).join('、')}…',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: cs.onPrimaryContainer.withValues(alpha: 0.8),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      FilledButton.icon(
-                        onPressed: () => context.read<PlayerService>().setQueue(
-                          List<Track>.of(tracks),
-                        ),
-                        style: FilledButton.styleFrom(
-                          shape: const StadiumBorder(),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        icon: const Icon(Icons.play_arrow_rounded),
-                        label: const Text('立即播放'),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 124,
-                  height: 116,
-                  child: Stack(
-                    children: [
-                      for (var i = covers.length - 1; i >= 0; i--)
-                        Positioned(
-                          right: i * 18.0,
-                          top: i * 8.0,
-                          child: Transform.rotate(
-                            angle: (i - 1) * 0.07,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.2),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: CoverArt(
-                                url: covers[i],
-                                size: 92 - i * 10,
-                                radius: 12,
-                                imageSize: 240,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '每日推荐',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: colors.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${now.month} 月 ${now.day} 日 · ${tracks.length} 首为你生成',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colors.onSurfaceVariantSummary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    tracks.take(3).map((t) => t.name).join(' / '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colors.onSurfaceVariantActions,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: '播放每日推荐',
+              child: MiuixIconButton(
+                backgroundColor: colors.primary,
+                cornerRadius: 22,
+                minWidth: 44,
+                minHeight: 44,
+                onPressed: () => context.read<PlayerService>().setQueue(
+                  List<Track>.of(tracks),
+                ),
+                child: Icon(
+                  Icons.play_arrow_rounded,
+                  color: colors.onPrimary,
+                  size: 28,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -499,23 +452,30 @@ class _NewSongs extends StatelessWidget {
           ),
         );
         if (!twoColumns) {
-          return Column(
+          return GroupCard(
             children: [for (var i = 0; i < shown.length; i++) tile(i)],
           );
         }
         final half = (shown.length / 2).ceil();
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(children: [for (var i = 0; i < half; i++) tile(i)]),
-            ),
-            Expanded(
-              child: Column(
-                children: [for (var i = half; i < shown.length; i++) tile(i)],
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: GroupCard(
+                  margin: const EdgeInsets.fromLTRB(6, 0, 6, 8),
+                  children: [for (var i = 0; i < half; i++) tile(i)],
+                ),
               ),
-            ),
-          ],
+              Expanded(
+                child: GroupCard(
+                  margin: const EdgeInsets.fromLTRB(6, 0, 6, 8),
+                  children: [for (var i = half; i < shown.length; i++) tile(i)],
+                ),
+              ),
+            ],
+          ),
         );
       },
     );

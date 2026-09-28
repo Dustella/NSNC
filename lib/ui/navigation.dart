@@ -21,6 +21,7 @@ Future<void> openMedia(BuildContext context, MediaItem item, {int? uid}) =>
           title: item.title,
           coverUrl: item.coverUrl,
           likedSongsUid: item.isLikedPlaylist ? uid : null,
+          isChart: item.kind == MediaKind.chart,
         ),
       ),
       MediaKind.album => openAlbum(context, item.id, item.title),
@@ -35,6 +36,7 @@ Future<void> openAlbum(BuildContext context, int id, String title) => _push(
   context,
   TrackListScreen(
     title: title.isEmpty ? '专辑' : title,
+    barTitle: '专辑',
     numbered: true,
     headerIcon: Icons.album_rounded,
     loader: (client) async {
@@ -70,6 +72,7 @@ Future<void> openArtist(BuildContext context, int id, String name) => _push(
   context,
   TrackListScreen(
     title: name.isEmpty ? '歌手' : name,
+    barTitle: '歌手',
     circleCover: true,
     headerIcon: Icons.person_rounded,
     loader: (client) async {

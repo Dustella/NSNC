@@ -14,6 +14,7 @@ import 'navigation.dart';
 import 'track_list_screen.dart';
 import 'widgets/common.dart';
 import 'widgets/media_widgets.dart';
+import 'widgets/miuix_extras.dart';
 import 'widgets/track_widgets.dart';
 
 enum _Category {
@@ -130,7 +131,7 @@ class _SearchScreenState extends State<SearchScreen> {
     final layout =
         prefs?.layoutFor(LayoutSurface.search) ?? CollectionLayout.list;
     return MiuixScaffold(
-      topBar: MiuixSmallTopAppBar(
+      topBar: MiuixTopAppBar(
         title: '搜索',
         bottomContent: Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -168,7 +169,6 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _idle(UiPreferences? prefs, List<String> recent) {
     _hot ??= _loadHot();
-    final theme = Theme.of(context);
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
@@ -192,13 +192,7 @@ class _SearchScreenState extends State<SearchScreen> {
               runSpacing: 8,
               children: [
                 for (final keyword in recent)
-                  ActionChip(
-                    label: Text(keyword),
-                    onPressed: () => _submit(keyword),
-                    shape: const StadiumBorder(),
-                    side: BorderSide.none,
-                    backgroundColor: theme.colorScheme.surfaceContainerHigh,
-                  ),
+                  PillChip(label: keyword, onTap: () => _submit(keyword)),
               ],
             ),
           ),
@@ -221,7 +215,9 @@ class _SearchScreenState extends State<SearchScreen> {
                 onAction: () => setState(() => _hot = _loadHot()),
               );
             }
-            return _HotList(items: snap.data!, onTap: _submit);
+            return GroupCard(
+              children: [_HotList(items: snap.data!, onTap: _submit)],
+            );
           },
         ),
       ],
@@ -237,6 +233,7 @@ class _SearchScreenState extends State<SearchScreen> {
             children: [
               Expanded(
                 child: MiuixTabRow(
+                  minWidth: 60,
                   tabs: [for (final c in _Category.values) c.label],
                   selectedTabIndex: _category.index,
                   onTabSelected: (i) => setState(() {
@@ -274,12 +271,17 @@ class _SearchScreenState extends State<SearchScreen> {
               if (_category == _Category.song) {
                 final tracks = results.tracks;
                 return ListView.builder(
+                  padding: const EdgeInsets.only(top: 4),
                   itemCount: tracks.length,
-                  itemBuilder: (context, i) => TrackTile(
-                    track: tracks[i],
-                    onTap: () => context.read<PlayerService>().setQueue(
-                      tracks,
-                      startAt: i,
+                  itemBuilder: (context, i) => GroupedItem(
+                    index: i,
+                    count: tracks.length,
+                    child: TrackTile(
+                      track: tracks[i],
+                      onTap: () => context.read<PlayerService>().setQueue(
+                        tracks,
+                        startAt: i,
+                      ),
                     ),
                   ),
                 );

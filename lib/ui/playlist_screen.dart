@@ -10,6 +10,7 @@ import '../services/player_service.dart';
 import '../services/playlist_repository.dart';
 import 'widgets/common.dart';
 import 'widgets/detail_scaffold.dart';
+import 'widgets/miuix_extras.dart';
 import 'widgets/track_widgets.dart';
 
 /// Tracks of a single playlist (or chart), loaded in bounded pages.
@@ -20,12 +21,14 @@ class PlaylistDetailScreen extends StatefulWidget {
     required this.title,
     this.coverUrl,
     this.likedSongsUid,
+    this.isChart = false,
   });
 
   final int playlistId;
   final String title;
   final String? coverUrl;
   final int? likedSongsUid;
+  final bool isChart;
 
   @override
   State<PlaylistDetailScreen> createState() => _PlaylistDetailScreenState();
@@ -160,7 +163,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return DetailScaffold(
-      title: widget.title,
+      title: widget.isChart ? '排行榜' : '歌单',
       actions: [
         Tooltip(
           message: '刷新',
@@ -231,10 +234,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         }
         final i = index - 2;
         if (i == _tracks.length) return _pageFooter();
-        return TrackTile(
-          track: _tracks[i],
-          index: i + 1,
-          onTap: () => _play(i),
+        return GroupedItem(
+          index: i,
+          count: _tracks.length,
+          child: TrackTile(
+            track: _tracks[i],
+            index: i + 1,
+            onTap: () => _play(i),
+          ),
         );
       },
     );

@@ -7,6 +7,7 @@ import '../services/app_state.dart';
 import '../services/player_service.dart';
 import 'widgets/common.dart';
 import 'widgets/detail_scaffold.dart';
+import 'widgets/miuix_extras.dart';
 import 'widgets/track_widgets.dart';
 
 /// What a [TrackListScreen] loader resolves to.
@@ -35,13 +36,19 @@ class TrackListScreen extends StatefulWidget {
     super.key,
     required this.title,
     required this.loader,
+    this.barTitle = '',
     this.numbered = false,
     this.circleCover = false,
     this.headerIcon = Icons.queue_music_rounded,
     this.emptyMessage = '这里还没有歌曲',
   });
 
+  /// Header title (fallback when the loader provides none).
   final String title;
+
+  /// Small top-bar label: the collection type, never the name again, so
+  /// the page carries a single headline.
+  final String barTitle;
   final Future<TrackListData> Function(NcmClient client) loader;
 
   /// Show track numbers instead of covers (albums).
@@ -69,7 +76,7 @@ class _TrackListScreenState extends State<TrackListScreen> {
   @override
   Widget build(BuildContext context) {
     return DetailScaffold(
-      title: widget.title,
+      title: widget.barTitle,
       body: FutureBuilder<TrackListData>(
         future: _future,
         builder: (context, snap) {
@@ -129,14 +136,18 @@ class _TrackListScreenState extends State<TrackListScreen> {
                   );
                 }
                 final index = i - 2;
-                return TrackTile(
-                  track: tracks[index],
-                  index: index + 1,
-                  showCover: !widget.numbered,
-                  showAlbum: !widget.numbered,
-                  onTap: () => context.read<PlayerService>().setQueue(
-                    List<Track>.of(tracks),
-                    startAt: index,
+                return GroupedItem(
+                  index: index,
+                  count: tracks.length,
+                  child: TrackTile(
+                    track: tracks[index],
+                    index: index + 1,
+                    showCover: !widget.numbered,
+                    showAlbum: !widget.numbered,
+                    onTap: () => context.read<PlayerService>().setQueue(
+                      List<Track>.of(tracks),
+                      startAt: index,
+                    ),
                   ),
                 );
               },

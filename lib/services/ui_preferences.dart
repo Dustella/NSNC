@@ -56,14 +56,16 @@ enum CoverCorner {
 }
 
 enum PaletteStyle {
-  tonalSpot('柔和', MiuixThemePaletteStyle.tonalSpot),
-  vibrant('鲜艳', MiuixThemePaletteStyle.vibrant),
-  expressive('表现力', MiuixThemePaletteStyle.expressive),
-  neutral('中性', MiuixThemePaletteStyle.neutral);
+  hyperos('HyperOS 中性', null),
+  tonalSpot('Monet 柔和', MiuixThemePaletteStyle.tonalSpot),
+  vibrant('Monet 鲜艳', MiuixThemePaletteStyle.vibrant),
+  expressive('Monet 表现力', MiuixThemePaletteStyle.expressive);
 
   const PaletteStyle(this.label, this.miuix);
   final String label;
-  final MiuixThemePaletteStyle miuix;
+
+  /// Monet style, or null for the neutral MIUIX surfaces with accent primary.
+  final MiuixThemePaletteStyle? miuix;
 }
 
 /// Layout surfaces that remember their own list/card choice.
@@ -96,7 +98,7 @@ class UiPreferences extends ChangeNotifier {
 
   ThemeMode _themeMode = ThemeMode.system;
   NsncAccent _accent = NsncAccent.netease;
-  PaletteStyle _palette = PaletteStyle.tonalSpot;
+  PaletteStyle _palette = PaletteStyle.hyperos;
   CollectionLayout _defaultLayout = CollectionLayout.grid;
   final Map<String, CollectionLayout> _layouts = {};
   Set<HomeSection> _homeSections = HomeSection.values.toSet();

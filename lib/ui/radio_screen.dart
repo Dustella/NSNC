@@ -13,6 +13,7 @@ import 'navigation.dart';
 import 'widgets/common.dart';
 import 'widgets/detail_scaffold.dart';
 import 'widgets/media_widgets.dart';
+import 'widgets/miuix_extras.dart';
 import 'widgets/track_widgets.dart';
 
 enum _RadioTab {
@@ -274,7 +275,7 @@ class _RadioDetailScreenState extends State<RadioDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final loggedIn = context.watch<AppState>().status == AuthStatus.loggedIn;
-    return DetailScaffold(title: widget.title, body: _body(loggedIn));
+    return DetailScaffold(title: '电台', body: _body(loggedIn));
   }
 
   Widget _body(bool loggedIn) {
@@ -328,17 +329,39 @@ class _RadioDetailScreenState extends State<RadioDetailScreen> {
               if (loggedIn && _subscribed != null)
                 Padding(
                   padding: const EdgeInsets.only(left: 4),
-                  child: _subscribed!
-                      ? OutlinedButton.icon(
-                          onPressed: _toggleSubscribe,
-                          icon: const Icon(Icons.check_rounded, size: 18),
-                          label: const Text('已订阅'),
-                        )
-                      : FilledButton.tonalIcon(
-                          onPressed: _toggleSubscribe,
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('订阅'),
+                  child: MiuixButton(
+                    onPressed: _toggleSubscribe,
+                    colors: _subscribed!
+                        ? null
+                        : MiuixButtonDefaults.buttonColorsPrimary(context),
+                    insideMargin: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _subscribed!
+                              ? Icons.check_rounded
+                              : Icons.add_rounded,
+                          size: 18,
+                          color: _subscribed!
+                              ? null
+                              : MiuixTheme.of(context).colors.onPrimary,
                         ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _subscribed! ? '已订阅' : '订阅',
+                          style: TextStyle(
+                            color: _subscribed!
+                                ? null
+                                : MiuixTheme.of(context).colors.onPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
             ],
           );
@@ -351,14 +374,18 @@ class _RadioDetailScreenState extends State<RadioDetailScreen> {
           );
         }
         final program = _programs[index];
-        return TrackTile(
-          track: program.track,
-          subtitle: [
-            if (program.createTime != null) _date(program.createTime!),
-            if (program.listenerCount > 0)
-              '${formatCount(program.listenerCount)} 次收听',
-          ].join(' · '),
-          onTap: () => _play(index),
+        return GroupedItem(
+          index: index,
+          count: _programs.length,
+          child: TrackTile(
+            track: program.track,
+            subtitle: [
+              if (program.createTime != null) _date(program.createTime!),
+              if (program.listenerCount > 0)
+                '${formatCount(program.listenerCount)} 次收听',
+            ].join(' · '),
+            onTap: () => _play(index),
+          ),
         );
       },
     );

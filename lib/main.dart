@@ -14,6 +14,7 @@ import 'services/player_service.dart';
 import 'services/playlist_repository.dart';
 import 'services/session_store.dart';
 import 'services/ui_preferences.dart';
+import 'theme/miuix_palette.dart';
 import 'theme/nsnc_theme.dart';
 import 'ui/home_shell.dart';
 
@@ -120,23 +121,32 @@ class _ThemedApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final prefs = context.watch<UiPreferences>();
-    final staticPalette = prefs.accent == NsncAccent.miuix;
-    final mode = switch ((prefs.themeMode, staticPalette)) {
-      (ThemeMode.light, true) => MiuixColorSchemeMode.light,
-      (ThemeMode.dark, true) => MiuixColorSchemeMode.dark,
-      (ThemeMode.system, true) => MiuixColorSchemeMode.system,
-      (ThemeMode.light, false) => MiuixColorSchemeMode.monetLight,
-      (ThemeMode.dark, false) => MiuixColorSchemeMode.monetDark,
-      (ThemeMode.system, false) => MiuixColorSchemeMode.monetSystem,
+    final monetStyle = prefs.palette.miuix;
+    final wallpaper = prefs.accent == NsncAccent.wallpaper;
+    // Monet only when asked for (or for wallpaper colours, which need it);
+    // otherwise HyperOS-neutral surfaces with the accent as primary.
+    final monet = wallpaper || monetStyle != null;
+    final mode = switch ((prefs.themeMode, monet)) {
+      (ThemeMode.light, false) => MiuixColorSchemeMode.light,
+      (ThemeMode.dark, false) => MiuixColorSchemeMode.dark,
+      (ThemeMode.system, false) => MiuixColorSchemeMode.system,
+      (ThemeMode.light, true) => MiuixColorSchemeMode.monetLight,
+      (ThemeMode.dark, true) => MiuixColorSchemeMode.monetDark,
+      (ThemeMode.system, true) => MiuixColorSchemeMode.monetSystem,
     };
+    final accent = prefs.accent.color;
     return MediaQuery.fromView(
       view: View.of(context),
       child: MiuixThemeController(
         colorSchemeMode: mode,
-        keyColor: prefs.accent == NsncAccent.wallpaper
-            ? null
-            : prefs.accent.color,
-        paletteStyle: prefs.palette.miuix,
+        lightColors: prefs.accent == NsncAccent.miuix
+            ? lightColorScheme()
+            : miuixAccentColors(accent, dark: false),
+        darkColors: prefs.accent == NsncAccent.miuix
+            ? darkColorScheme()
+            : miuixAccentColors(accent, dark: true),
+        keyColor: wallpaper ? null : accent,
+        paletteStyle: monetStyle ?? MiuixThemePaletteStyle.tonalSpot,
         fontWeightAdjustment: 0,
         child: Builder(
           builder: (context) {

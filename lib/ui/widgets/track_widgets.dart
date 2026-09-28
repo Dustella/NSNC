@@ -9,6 +9,7 @@ import '../../services/library_services.dart';
 import '../../services/player_service.dart';
 import '../navigation.dart';
 import 'common.dart';
+import 'miuix_extras.dart';
 
 String formatClock(Duration d) {
   final minutes = d.inMinutes;
@@ -233,10 +234,8 @@ Future<void> showTrackActions(
     if (navigator.mounted) showToast(navigator.context, text);
   }
 
-  await showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
+  await showMiuixSheet<void>(
+    context,
     builder: (sheet) {
       final liked = likes?.isLiked(track.id) ?? false;
       final actions = <Widget>[
@@ -308,58 +307,48 @@ Future<void> showTrackActions(
             },
           ),
       ];
-      return SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(sheet).height * 0.75,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                  child: Row(
-                    children: [
-                      CoverArt(
-                        url: track.albumArtUrl,
-                        size: 52,
-                        imageSize: 140,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              track.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(sheet).textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                            Text(
-                              track.artistLabel,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Theme.of(
-                                  sheet,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
+      return SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Row(
+                children: [
+                  CoverArt(url: track.albumArtUrl, size: 52, imageSize: 140),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          track.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                    ],
+                        Text(
+                          track.artistLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: MiuixTheme.of(
+                              sheet,
+                            ).colors.onSurfaceVariantSummary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const MiuixHorizontalDivider(),
-                ...actions,
-                const SizedBox(height: 8),
-              ],
+                ],
+              ),
             ),
-          ),
+            ...actions,
+          ],
         ),
       );
     },
@@ -421,26 +410,44 @@ class PlayAllBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final colors = MiuixTheme.of(context).colors;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
       child: Row(
         children: [
-          Flexible(
-            child: FilledButton.icon(
-              onPressed: onPlay,
-              style: FilledButton.styleFrom(
-                shape: const StadiumBorder(),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 10,
-                ),
+          ConstrainedBox(
+            // Intrinsic width (no Flexible) so a trailing Spacer cannot steal
+            // half of the row and truncate the label; capped for long text.
+            constraints: const BoxConstraints(maxWidth: 240),
+            child: MiuixButton(
+              onPressed: onPlay ?? () {},
+              enabled: onPlay != null,
+              colors: MiuixButtonDefaults.buttonColorsPrimary(context),
+              insideMargin: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 10,
               ),
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: Text(
-                label ?? '播放全部 · $count',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.play_arrow_rounded,
+                    color: colors.onPrimary,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      label ?? '播放全部 · $count',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.onPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -448,11 +455,16 @@ class PlayAllBar extends StatelessWidget {
             const SizedBox(width: 8),
             Tooltip(
               message: '随机播放',
-              child: IconButton.filledTonal(
+              child: MiuixIconButton(
                 onPressed: onShuffle,
-                icon: Icon(
+                backgroundColor: colors.secondaryVariant,
+                cornerRadius: 16,
+                minWidth: 44,
+                minHeight: 44,
+                child: Icon(
                   Icons.shuffle_rounded,
-                  color: cs.onSecondaryContainer,
+                  color: colors.onSecondaryVariant,
+                  size: 22,
                 ),
               ),
             ),

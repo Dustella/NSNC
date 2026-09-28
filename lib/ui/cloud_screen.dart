@@ -10,6 +10,7 @@ import '../services/app_state.dart';
 import '../services/player_service.dart';
 import 'widgets/common.dart';
 import 'widgets/detail_scaffold.dart';
+import 'widgets/miuix_extras.dart';
 import 'widgets/track_widgets.dart';
 
 /// The user's cloud drive: storage usage, every uploaded/matched song,
@@ -111,21 +112,16 @@ class _CloudScreenState extends State<CloudScreen> {
   List<Track> get _tracks => [for (final s in _songs) s.track];
 
   Future<void> _confirmDelete(CloudSong song) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('从云盘删除'),
-        content: Text(
-          '将永久删除云盘中的「${song.track.name}」（${formatBytes(song.fileSize)}）。'
+    final confirmed = await showMiuixConfirm(
+      context,
+      title: '从云盘删除',
+      message:
+          '将永久删除云盘中的「${song.track.name}」（${formatBytes(song.fileSize)}）。\n'
           '此操作无法撤销，本地已下载的文件不受影响。',
-        ),
-        actions: [
-          MiuixTextButton('取消', onPressed: () => Navigator.pop(c, false)),
-          MiuixTextButton('删除', onPressed: () => Navigator.pop(c, true)),
-        ],
-      ),
+      confirmLabel: '删除',
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     try {
       await context.read<AppState>().client.userCloudDelete([song.track.id]);
       if (!mounted) return;
@@ -196,18 +192,23 @@ class _CloudScreenState extends State<CloudScreen> {
           );
         }
         final song = _songs[index];
-        return TrackTile(
-          track: song.track,
-          subtitle: '${song.track.artistLabel} · ${formatBytes(song.fileSize)}',
-          onTap: () =>
-              context.read<PlayerService>().setQueue(_tracks, startAt: index),
-          extraActions: [
-            TrackAction(
-              icon: Icons.delete_outline_rounded,
-              label: '从云盘删除',
-              onSelected: () => unawaited(_confirmDelete(song)),
-            ),
-          ],
+        return GroupedItem(
+          index: index,
+          count: _songs.length,
+          child: TrackTile(
+            track: song.track,
+            subtitle:
+                '${song.track.artistLabel} · ${formatBytes(song.fileSize)}',
+            onTap: () =>
+                context.read<PlayerService>().setQueue(_tracks, startAt: index),
+            extraActions: [
+              TrackAction(
+                icon: Icons.delete_outline_rounded,
+                label: '从云盘删除',
+                onSelected: () => unawaited(_confirmDelete(song)),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -227,65 +228,75 @@ class _UsageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
+    final colors = MiuixTheme.of(context).colors;
     final ratio = max > 0 ? (used / max).clamp(0.0, 1.0) : 0.0;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [cs.primaryContainer, cs.surfaceContainerHigh],
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.cloud_rounded,
-                    color: cs.onPrimaryContainer,
-                    size: 28,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      '$count 首歌曲',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: cs.onPrimaryContainer,
-                      ),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      child: MiuixCard(
+        cornerRadius: 16,
+        insideMargin: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: ShapeDecoration(
+                    color: const Color(0xFF14B8A6),
+                    shape: RoundedSuperellipseBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: ratio,
-                  minHeight: 8,
-                  backgroundColor: cs.surface.withValues(alpha: 0.6),
+                  child: const Icon(
+                    Icons.cloud_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                max > 0
-                    ? '已用 ${formatBytes(used)} / ${formatBytes(max)}'
-                          ' · ${(ratio * 100).toStringAsFixed(1)}%'
-                    : '已用 ${formatBytes(used)}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: cs.onPrimaryContainer,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$count 首歌曲',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: colors.onSurface,
+                        ),
+                      ),
+                      Text(
+                        max > 0
+                            ? '已用 ${formatBytes(used)} / ${formatBytes(max)}'
+                            : '已用 ${formatBytes(used)}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colors.onSurfaceVariantSummary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
+                if (max > 0)
+                  Text(
+                    '${(ratio * 100).toStringAsFixed(1)}%',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: colors.primary,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: MiuixLinearProgressIndicator(progress: ratio, height: 6),
+            ),
+          ],
         ),
       ),
     );

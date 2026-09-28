@@ -11,6 +11,7 @@ import '../services/player_service.dart';
 import '../services/ui_preferences.dart';
 import 'lazy_network_image.dart';
 import 'widgets/common.dart';
+import 'widgets/miuix_extras.dart';
 import 'widgets/track_widgets.dart';
 
 /// A single timestamped lyric line parsed from an LRC string.
@@ -215,10 +216,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _showQueue(PlayerService player) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
+    await showMiuixSheet<void>(
+      context,
+      maxHeightFactor: 0.78,
       builder: (context) => _QueueSheet(player: player),
     );
   }
@@ -323,6 +323,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             PlayerBackground.blurredCover => BlurredCover(
               url: track.albumArtUrl,
               sigma: 60,
+              strength: 0.85,
             ),
             PlayerBackground.gradient => _CoverGradient(url: track.albumArtUrl),
             PlayerBackground.plain => ColoredBox(color: cs.surface),
@@ -347,7 +348,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // MiuixSlider paints into a CustomPaint that takes the incoming
+              // width constraint; under a loose (centred) Column it collapses
+              // to zero width, so stretch it explicitly.
               MiuixSlider(
                 min: 0,
                 max: maxSeconds,
@@ -499,18 +504,21 @@ class _QueueSheet extends StatelessWidget {
         final currentIndex = player.currentIndex;
         return SafeArea(
           child: SizedBox(
-            height: MediaQuery.sizeOf(context).height * 0.72,
+            height: MediaQuery.sizeOf(context).height * 0.62,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  padding: const EdgeInsets.fromLTRB(24, 6, 24, 10),
                   child: Text(
                     '播放列表 · ${tracks.length} 首',
-                    style: Theme.of(context).textTheme.titleLarge,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-                const MiuixHorizontalDivider(),
                 Expanded(
                   child: ListView.builder(
                     itemCount: tracks.length,
@@ -519,8 +527,17 @@ class _QueueSheet extends StatelessWidget {
                       final selected = index == currentIndex;
                       return MiuixBasicComponent(
                         startAction: selected
-                            ? const Icon(Icons.graphic_eq)
-                            : Text('${index + 1}'),
+                            ? Icon(
+                                Icons.graphic_eq_rounded,
+                                color: MiuixTheme.of(context).colors.primary,
+                              )
+                            : SizedBox(
+                                width: 24,
+                                child: Text(
+                                  '${index + 1}',
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
                         title: track.name,
                         summary: track.artistLabel,
                         endActions: selected
@@ -629,30 +646,21 @@ class _PlaybackOptions extends StatelessWidget {
   };
 
   Future<void> _showQualityPicker(BuildContext context) async {
-    final selected = await showModalBottomSheet<SongLevel>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
+    final selected = await showMiuixSheet<SongLevel>(
+      context,
+      title: '选择音质',
+      builder: (sheetContext) => SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text(
-                '选择音质',
-                style: Theme.of(sheetContext).textTheme.titleLarge,
-              ),
-            ),
             for (final entry in _labels.entries)
               MiuixRadioButtonPreference(
                 title: entry.value,
                 selected: entry.key == player.level,
-                startAction: const Icon(Icons.high_quality_outlined),
                 radioButtonLocation: MiuixRadioButtonLocation.end,
                 onClick: () => Navigator.pop(sheetContext, entry.key),
               ),
-            const SizedBox(height: 8),
           ],
         ),
       ),
