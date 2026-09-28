@@ -145,12 +145,16 @@ verify() {
     sh /packaging/check-libs.sh /opt/nsnc'
   echo "::endgroup::"
 
-  echo "::group::Verify AppImage on Ubuntu 24.04 (GTK + ALSA only, no mpv)"
-  # linuxdeploy never bundles host-level libraries such as libasound, so the
-  # container gets what a minimal desktop already has, and nothing mpv-specific.
+  echo "::group::Verify AppImage on Ubuntu 24.04 (desktop base libs only, no mpv/ffmpeg)"
+  # linuxdeploy deliberately never bundles host-level libraries (GL/EGL/DRM,
+  # X11, ALSA, PipeWire, libusb) because they must match the host's drivers
+  # and daemons. Give the container what any desktop session already has,
+  # and nothing mpv- or ffmpeg-specific.
   in_container ubuntu:24.04 '
     apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libgtk-3-0t64 libasound2t64 >/dev/null
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+      libgtk-3-0t64 libasound2t64 libpipewire-0.3-0t64 libusb-1.0-0 \
+      libgl1 libegl1 libgbm1 libdrm2 libx11-xcb1 libxcb-dri3-0 >/dev/null
     if dpkg -s libmpv2 >/dev/null 2>&1; then echo "libmpv2 unexpectedly installed"; exit 1; fi
     cd /tmp && cp /out/nsnc-*.AppImage app && ./app --appimage-extract >/dev/null
     sh /packaging/check-libs.sh /tmp/squashfs-root/nsnc /tmp/squashfs-root/usr/lib/mpv'
