@@ -141,10 +141,12 @@ verify() {
     sh /packaging/check-libs.sh /opt/nsnc'
   echo "::endgroup::"
 
-  echo "::group::Verify AppImage on Ubuntu 24.04 (GTK only, no mpv)"
+  echo "::group::Verify AppImage on Ubuntu 24.04 (GTK + ALSA only, no mpv)"
+  # linuxdeploy never bundles host-level libraries such as libasound, so the
+  # container gets what a minimal desktop already has, and nothing mpv-specific.
   in_container ubuntu:24.04 '
     apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libgtk-3-0t64 >/dev/null
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libgtk-3-0t64 libasound2t64 >/dev/null
     if dpkg -s libmpv2 >/dev/null 2>&1; then echo "libmpv2 unexpectedly installed"; exit 1; fi
     cd /tmp && cp /out/nsnc-*.AppImage app && ./app --appimage-extract >/dev/null
     sh /packaging/check-libs.sh /tmp/squashfs-root/nsnc /tmp/squashfs-root/usr/lib/mpv'

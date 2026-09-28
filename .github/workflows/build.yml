@@ -53,7 +53,7 @@ jobs:
           # MSI versions are numeric only: 0.1.0+1 -> 0.1.0.1
           $msiVersion = $version -replace '\+', '.'
           $name = "nsnc-$version-windows-x64"
-          $release = 'build\windows\x64\runner\Release'
+          $release = (Resolve-Path 'build\windows\x64\runner\Release').Path
           New-Item -ItemType Directory -Force dist | Out-Null
           Compress-Archive -Path "$release\*" -DestinationPath "dist\$name.zip"
           wix build packaging/windows/nsnc.wxs -arch x64 -ext WixToolset.UI.wixext `
