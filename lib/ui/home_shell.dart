@@ -10,7 +10,6 @@ import 'now_playing_bar.dart';
 import 'search_screen.dart';
 import 'settings_screen.dart';
 import 'widgets/miuix_extras.dart';
-import 'widgets/nsnc_logo.dart';
 
 /// Root scaffold: adaptive navigation (bottom bar on narrow, rail on wide)
 /// across Discover / Search / Library / Settings, with a persistent mini-player.
@@ -119,8 +118,7 @@ class _RailHeader extends StatelessWidget {
     final loggedIn = app.status == AuthStatus.loggedIn;
     return Column(
       children: [
-        const NsncLogo(size: 40),
-        const SizedBox(height: 14),
+        const SizedBox(height: 8),
         MiuixSurface(
           cornerRadius: 24,
           onPressed: () => _onAccountTap(context, loggedIn),

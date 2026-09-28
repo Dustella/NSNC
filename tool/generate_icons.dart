@@ -11,6 +11,29 @@ import 'package:image/image.dart' as img;
 const _c0 = [0xFF, 0x6B, 0x5B]; // top-left coral
 const _c1 = [0xD9, 0x1E, 0x3C]; // bottom-right crimson
 
+/// Glyph only, on transparency, for Android adaptive-icon foregrounds: the
+/// 108dp canvas maps onto the icon square scaled by [scale] so the glyph stays
+/// inside the 66dp safe zone. Grooves are translucent so the background
+/// gradient shows through them, as on the full icon.
+List<double> _sampleForeground(double u, double v, {double scale = 0.76}) {
+  final x = 0.5 + (u - 0.5) / scale, y = 0.5 + (v - 0.5) / scale;
+  final part = _noteGlyph(x, y);
+  if (part == _Part.none) return const [0, 0, 0, 0];
+  if (part == _Part.disc) {
+    final dx = x - _discX, dy = y - _discY;
+    final d = math.sqrt(dx * dx + dy * dy);
+    if (d <= 0.052) return const [0, 0, 0, 0];
+    for (final (radius, width) in [
+      (0.188, 0.0065),
+      (0.143, 0.0055),
+      (0.098, 0.005),
+    ]) {
+      if ((d - radius).abs() < width) return const [255, 255, 255, 184];
+    }
+  }
+  return const [255, 255, 255, 255];
+}
+
 /// RGBA for one sample. [bleed]: full square background (iOS), otherwise a
 /// squircle with [pad] transparent margin.
 List<double> _sample(
@@ -114,7 +137,12 @@ _Part _noteGlyph(double x, double y) {
   return _Part.none;
 }
 
-img.Image render(int size, {required bool bleed, double pad = 0}) {
+img.Image render(
+  int size, {
+  required bool bleed,
+  double pad = 0,
+  bool foreground = false,
+}) {
   final out = img.Image(width: size, height: size, numChannels: 4);
   const ss = 4;
   for (var py = 0; py < size; py++) {
@@ -122,12 +150,11 @@ img.Image render(int size, {required bool bleed, double pad = 0}) {
       var r = 0.0, g = 0.0, b = 0.0, a = 0.0;
       for (var sy = 0; sy < ss; sy++) {
         for (var sx = 0; sx < ss; sx++) {
-          final s = _sample(
-            (px + (sx + 0.5) / ss) / size,
-            (py + (sy + 0.5) / ss) / size,
-            bleed: bleed,
-            pad: pad,
-          );
+          final u = (px + (sx + 0.5) / ss) / size;
+          final v = (py + (sy + 0.5) / ss) / size;
+          final s = foreground
+              ? _sampleForeground(u, v)
+              : _sample(u, v, bleed: bleed, pad: pad);
           final alpha = s[3] / 255;
           r += s[0] * alpha;
           g += s[1] * alpha;
@@ -174,6 +201,12 @@ void main(List<String> args) {
     writePng(
       '$root/android/app/src/main/res/mipmap-${e.key}/ic_launcher.png',
       render(e.value, bleed: false),
+    );
+    // Adaptive icon (Android 8+): 108dp foreground layer = 2.25x the 48dp
+    // legacy size; the gradient background is a vector drawable.
+    writePng(
+      '$root/android/app/src/main/res/mipmap-${e.key}/ic_launcher_foreground.png',
+      render((e.value * 2.25).round(), bleed: false, foreground: true),
     );
   }
 
