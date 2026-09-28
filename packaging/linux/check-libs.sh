@@ -14,7 +14,12 @@ fi
 
 fail=0
 for f in "$app/nsnc" "$app"/lib/*.so; do
-  missing="$(ldd "$f" 2>&1 | grep 'not found' || true)"
+  # Plugins find libflutter_linux_gtk.so through the executable's
+  # RUNPATH ($ORIGIN/lib) at runtime, so give ldd the same directory.
+  # libdartjni.so (from package:jni) only needs libjvm when a JVM is used,
+  # which never happens on desktop Linux.
+  missing="$(LD_LIBRARY_PATH="$app/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ldd "$f" 2>&1 \
+    | grep 'not found' | grep -v 'libjvm\.so' || true)"
   if [ -n "$missing" ]; then
     echo "Unresolved libraries for $f:"
     echo "$missing"

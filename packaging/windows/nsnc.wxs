@@ -1,7 +1,7 @@
 <!--
   NSNC Windows installer (WiX Toolset v5).
 
-  Build (from the repo root, after `flutter build windows --release`):
+  Build from the repo root after a Flutter Windows release build:
     wix build packaging/windows/nsnc.wxs -arch x64 -ext WixToolset.UI.wixext
       -d Version=0.1.0.1
       -d ReleaseDir=build\windows\x64\runner\Release
