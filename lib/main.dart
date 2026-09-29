@@ -30,7 +30,9 @@ Future<void> main() async {
   CachedNetworkImageProvider.defaultCacheManager = cacheSettings.coverCache;
   final client = NcmClient(device: device);
   final PlayerService player;
-  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+  if (!kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.macOS)) {
     player = await AudioService.init<PlayerService>(
       builder: () => PlayerService(
         client: client,

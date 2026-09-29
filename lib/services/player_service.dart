@@ -33,7 +33,7 @@ abstract interface class FmPlayback implements Listenable {
 }
 
 /// Owns the playback queue and is the single source of truth for the app UI,
-/// Android MediaSession/notification and Windows SMTC.
+/// Android/macOS system media controls and Windows SMTC.
 class PlayerService extends BaseAudioHandler
     with ChangeNotifier
     implements FmPlayback {
