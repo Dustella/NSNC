@@ -54,6 +54,12 @@ Search, library, and radio filters use MIUIX's grouped `TabRowWithContour`
 variant with 14px labels. Search input and placeholder text also use 14px,
 with smaller icons while retaining their original hit areas.
 
+The player keeps compact windows focused on artwork, track information, liking,
+and transport controls. Quality, lyrics, volume, downloads, and queue access stay
+available in More; windows at least 840 logical pixels wide also expose them in
+the top toolbar. Tap the artwork/lyrics panel to switch views. Compact volume
+controls open in a separate MIUIX sheet, without crowding the playback controls.
+
 Release packages (Windows, Linux, macOS, Android) are built by GitHub Actions
 and published on `v*` tags; see [Building and releasing](docs/building-and-releasing.md).
 

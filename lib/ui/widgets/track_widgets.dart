@@ -108,7 +108,7 @@ class TrackTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       onLongPress: () =>
-          showTrackActions(context, track, extraActions: extraActions),
+          showTrackActions(context, track, extraActions: () => extraActions),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 6, 4, 6),
         child: Row(
@@ -178,7 +178,7 @@ class TrackTile extends StatelessWidget {
                 onPressed: () => showTrackActions(
                   context,
                   track,
-                  extraActions: extraActions,
+                  extraActions: () => extraActions,
                 ),
                 child: Icon(
                   Icons.more_vert_rounded,
@@ -208,18 +208,20 @@ class TrackAction {
     required this.icon,
     required this.label,
     required this.onSelected,
+    this.enabled = true,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onSelected;
+  final bool enabled;
 }
 
 /// Bottom sheet with the per-song actions shared by every track list.
 Future<void> showTrackActions(
   BuildContext context,
   Track track, {
-  List<TrackAction> extraActions = const [],
+  List<TrackAction> Function()? extraActions,
 }) async {
   final player = context.read<PlayerService>();
   LikeService? likes;
@@ -236,122 +238,127 @@ Future<void> showTrackActions(
 
   await showMiuixSheet<void>(
     context,
-    builder: (sheet) {
-      final liked = likes?.isLiked(track.id) ?? false;
-      final actions = <Widget>[
-        _SheetAction(
-          icon: Icons.playlist_play_rounded,
-          label: '下一首播放',
-          onTap: () {
-            Navigator.pop(sheet);
-            unawaited(player.playNext(track));
-            toast('将在下一首播放「${track.name}」');
-          },
-        ),
-        _SheetAction(
-          icon: Icons.playlist_add_rounded,
-          label: '添加到播放列表',
-          onTap: () {
-            Navigator.pop(sheet);
-            if (player.tracks.isEmpty) {
-              unawaited(player.setQueue([track]));
-            } else {
-              player.enqueue(track);
-            }
-            toast('已添加到播放列表');
-          },
-        ),
-        if (likes != null && likes.ready)
+    builder: (sheet) => ListenableBuilder(
+      listenable: player,
+      builder: (sheet, _) {
+        final liked = likes?.isLiked(track.id) ?? false;
+        final actions = <Widget>[
           _SheetAction(
-            icon: liked
-                ? Icons.favorite_rounded
-                : Icons.favorite_border_rounded,
-            label: liked ? '取消喜欢' : '喜欢',
+            icon: Icons.playlist_play_rounded,
+            label: '下一首播放',
             onTap: () {
               Navigator.pop(sheet);
-              likes!.toggle(track).catchError((Object e) {
-                toast('操作失败：${describeError(e)}');
-              });
+              unawaited(player.playNext(track));
+              toast('将在下一首播放「${track.name}」');
             },
           ),
-        if (track.albumId != null)
           _SheetAction(
-            icon: Icons.album_outlined,
-            label: '专辑：${track.album}',
+            icon: Icons.playlist_add_rounded,
+            label: '添加到播放列表',
             onTap: () {
               Navigator.pop(sheet);
-              openAlbum(navigator.context, track.albumId!, track.album);
+              if (player.tracks.isEmpty) {
+                unawaited(player.setQueue([track]));
+              } else {
+                player.enqueue(track);
+              }
+              toast('已添加到播放列表');
             },
           ),
-        for (var i = 0; i < track.artists.length; i++)
-          if (i < track.artistIds.length && track.artistIds[i] != 0)
+          if (likes != null && likes.ready)
             _SheetAction(
-              icon: Icons.person_outline_rounded,
-              label: '歌手：${track.artists[i]}',
+              icon: liked
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
+              label: liked ? '取消喜欢' : '喜欢',
               onTap: () {
                 Navigator.pop(sheet);
-                openArtist(
-                  navigator.context,
-                  track.artistIds[i],
-                  track.artists[i],
-                );
+                likes!.toggle(track).catchError((Object e) {
+                  toast('操作失败：${describeError(e)}');
+                });
               },
             ),
-        for (final extra in extraActions)
-          _SheetAction(
-            icon: extra.icon,
-            label: extra.label,
-            onTap: () {
-              Navigator.pop(sheet);
-              extra.onSelected();
-            },
-          ),
-      ];
-      return SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-              child: Row(
-                children: [
-                  CoverArt(url: track.albumArtUrl, size: 52, imageSize: 140),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          track.name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          track.artistLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: MiuixTheme.of(
-                              sheet,
-                            ).colors.onSurfaceVariantSummary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+          if (track.albumId != null)
+            _SheetAction(
+              icon: Icons.album_outlined,
+              label: '专辑：${track.album}',
+              onTap: () {
+                Navigator.pop(sheet);
+                openAlbum(navigator.context, track.albumId!, track.album);
+              },
             ),
-            ...actions,
-          ],
-        ),
-      );
-    },
+          for (var i = 0; i < track.artists.length; i++)
+            if (i < track.artistIds.length && track.artistIds[i] != 0)
+              _SheetAction(
+                icon: Icons.person_outline_rounded,
+                label: '歌手：${track.artists[i]}',
+                onTap: () {
+                  Navigator.pop(sheet);
+                  openArtist(
+                    navigator.context,
+                    track.artistIds[i],
+                    track.artists[i],
+                  );
+                },
+              ),
+          for (final extra in extraActions?.call() ?? const <TrackAction>[])
+            _SheetAction(
+              icon: extra.icon,
+              label: extra.label,
+              onTap: extra.enabled
+                  ? () {
+                      Navigator.pop(sheet);
+                      extra.onSelected();
+                    }
+                  : null,
+            ),
+        ];
+        return SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Row(
+                  children: [
+                    CoverArt(url: track.albumArtUrl, size: 52, imageSize: 140),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            track.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            track.artistLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: MiuixTheme.of(
+                                sheet,
+                              ).colors.onSurfaceVariantSummary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ...actions,
+            ],
+          ),
+        );
+      },
+    ),
   );
 }
 
@@ -364,24 +371,33 @@ class _SheetAction extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final colors = MiuixTheme.of(context).colors;
+    final disabledColor = onTap == null ? colors.disabledOnSurface : null;
     return InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
         child: Row(
           children: [
-            Icon(icon, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            Icon(
+              icon,
+              color:
+                  disabledColor ??
+                  Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(width: 16),
             Expanded(
               child: Text(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyLarge,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(color: disabledColor),
               ),
             ),
           ],

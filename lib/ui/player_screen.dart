@@ -14,6 +14,42 @@ import 'widgets/common.dart';
 import 'widgets/miuix_extras.dart';
 import 'widgets/track_widgets.dart';
 
+const _qualityLabels = {
+  SongLevel.standard: '标准',
+  SongLevel.higher: '较高',
+  SongLevel.exhigh: '极高',
+  SongLevel.lossless: '无损',
+  SongLevel.hires: 'Hi-Res',
+};
+
+Future<void> _showQualityPicker(
+  BuildContext context,
+  PlayerService player,
+) async {
+  final selected = await showMiuixSheet<SongLevel>(
+    context,
+    title: '选择音质',
+    builder: (sheetContext) => SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final entry in _qualityLabels.entries)
+            MiuixRadioButtonPreference(
+              title: entry.value,
+              selected: entry.key == player.level,
+              radioButtonLocation: MiuixRadioButtonLocation.end,
+              onClick: () => Navigator.pop(sheetContext, entry.key),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (selected != null && selected != player.level) {
+    await player.setLevel(selected);
+  }
+}
+
 /// A single timestamped lyric line parsed from an LRC string.
 class _LyricLine {
   const _LyricLine(this.time, this.text, [this.translation]);
@@ -180,37 +216,46 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Widget _mediaPanel(Track track, ColorScheme cs) {
     return Expanded(
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        child: _showLyrics
-            ? SizedBox.expand(
-                key: const ValueKey('lyrics-panel'),
-                child: ValueListenableBuilder<Duration>(
-                  valueListenable: context
-                      .read<PlayerService>()
-                      .positionListenable,
-                  builder: (context, position, _) => _lyricsView(position, cs),
-                ),
-              )
-            : Padding(
-                key: const ValueKey('artwork-panel'),
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final side = constraints.maxWidth
-                        .clamp(0.0, constraints.maxHeight)
-                        .clamp(0.0, 400.0);
-                    return Center(
-                      child: SizedBox.square(
-                        dimension: side,
-                        child: _Artwork(url: track.albumArtUrl, cs: cs),
-                      ),
-                    );
-                  },
-                ),
-              ),
+      child: Semantics(
+        button: true,
+        label: _showLyrics ? '点击显示封面' : '点击显示歌词',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _toggleLyrics,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            child: _showLyrics
+                ? SizedBox.expand(
+                    key: const ValueKey('lyrics-panel'),
+                    child: ValueListenableBuilder<Duration>(
+                      valueListenable: context
+                          .read<PlayerService>()
+                          .positionListenable,
+                      builder: (context, position, _) =>
+                          _lyricsView(position, cs),
+                    ),
+                  )
+                : Padding(
+                    key: const ValueKey('artwork-panel'),
+                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final side = constraints.maxWidth
+                            .clamp(0.0, constraints.maxHeight)
+                            .clamp(0.0, 400.0);
+                        return Center(
+                          child: SizedBox.square(
+                            dimension: side,
+                            child: _Artwork(url: track.albumArtUrl, cs: cs),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+          ),
+        ),
       ),
     );
   }
@@ -222,6 +267,62 @@ class _PlayerScreenState extends State<PlayerScreen> {
       builder: (context) => _QueueSheet(player: player),
     );
   }
+
+  Future<void> _showVolumeSheet(PlayerService player) => showMiuixSheet<void>(
+    context,
+    title: '音量',
+    builder: (sheetContext) => ListenableBuilder(
+      listenable: player,
+      builder: (context, _) => Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: _VolumeControl(
+          player: player,
+          cs: Theme.of(context).colorScheme,
+        ),
+      ),
+    ),
+  );
+
+  Future<void> _showPlayerActions(Track track, PlayerService player) =>
+      showTrackActions(
+        context,
+        track,
+        extraActions: () => [
+          TrackAction(
+            icon: Icons.high_quality_outlined,
+            label: '音质：${_qualityLabels[player.level]}',
+            enabled: !player.isBuffering,
+            onSelected: () => _showQualityPicker(context, player),
+          ),
+          TrackAction(
+            icon: _showLyrics ? Icons.album_outlined : Icons.lyrics_outlined,
+            label: _showLyrics ? '显示封面' : '显示歌词',
+            onSelected: _toggleLyrics,
+          ),
+          TrackAction(
+            icon: Icons.volume_up_outlined,
+            label: '音量：${player.volume.round()}%',
+            onSelected: () => _showVolumeSheet(player),
+          ),
+          TrackAction(
+            icon: player.isCurrentDownloaded
+                ? Icons.download_done
+                : Icons.download_outlined,
+            label: player.isDownloading
+                ? '正在下载：${(player.downloadProgress * 100).round()}%'
+                : player.isCurrentDownloaded
+                ? '重新导出到下载位置'
+                : '下载当前歌曲',
+            enabled: !player.isDownloading,
+            onSelected: player.downloadCurrent,
+          ),
+          TrackAction(
+            icon: Icons.queue_music_rounded,
+            label: '播放列表',
+            onSelected: () => _showQueue(player),
+          ),
+        ],
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -252,6 +353,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     final duration = p.duration;
     final prefs = context.watch<UiPreferences>();
+    // Leave room between the centred title and the full desktop toolbar.
+    final compact = MediaQuery.sizeOf(context).width < 840;
 
     final scaffold = MiuixScaffold(
       containerColor: Colors.transparent,
@@ -266,17 +369,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
         actions: [
-          Tooltip(
-            message: '播放列表',
-            child: MiuixIconButton(
-              onPressed: () => _showQueue(p),
-              child: const Icon(Icons.queue_music_rounded),
+          if (!compact) ...[
+            _PlaybackOptions(
+              player: p,
+              showLyrics: _showLyrics,
+              showVolume: _showVolume,
+              onToggleLyrics: _toggleLyrics,
+              onToggleVolume: _toggleVolume,
             ),
-          ),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: '播放列表',
+              child: MiuixIconButton(
+                onPressed: () => _showQueue(p),
+                child: const Icon(Icons.queue_music_rounded),
+              ),
+            ),
+          ],
           Tooltip(
             message: '更多',
             child: MiuixIconButton(
-              onPressed: () => showTrackActions(context, track),
+              onPressed: () => _showPlayerActions(track, p),
               child: const Icon(Icons.more_vert_rounded),
             ),
           ),
@@ -292,29 +405,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 _mediaPanel(track, cs),
                 const SizedBox(height: 16),
                 _TitleRow(track: track),
-                const SizedBox(height: 4),
-                _PlaybackOptions(
-                  player: p,
-                  showLyrics: _showLyrics,
-                  showVolume: _showVolume,
-                  onToggleLyrics: _toggleLyrics,
-                  onToggleVolume: _toggleVolume,
-                ),
+                const SizedBox(height: 20),
                 if (p.lastError != null)
                   _ErrorBanner(error: p.lastError!, cs: cs),
-                const SizedBox(height: 4),
                 _progressView(p, cs, duration),
                 ClipRect(
                   child: AnimatedSize(
                     duration: const Duration(milliseconds: 180),
                     curve: Curves.easeOut,
-                    child: _showVolume
+                    child: !compact && _showVolume
                         ? _VolumeControl(player: p, cs: cs)
                         : const SizedBox(width: double.infinity),
                   ),
                 ),
+                const SizedBox(height: 16),
                 _Controls(p: p, cs: cs, onRepeat: () => _cycleRepeat(p)),
-                const SizedBox(height: 12),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -643,123 +749,83 @@ class _PlaybackOptions extends StatelessWidget {
   final VoidCallback onToggleLyrics;
   final VoidCallback onToggleVolume;
 
-  static const _labels = {
-    SongLevel.standard: '标准',
-    SongLevel.higher: '较高',
-    SongLevel.exhigh: '极高',
-    SongLevel.lossless: '无损',
-    SongLevel.hires: 'Hi-Res',
-  };
-
-  Future<void> _showQualityPicker(BuildContext context) async {
-    final selected = await showMiuixSheet<SongLevel>(
-      context,
-      title: '选择音质',
-      builder: (sheetContext) => SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final entry in _labels.entries)
-              MiuixRadioButtonPreference(
-                title: entry.value,
-                selected: entry.key == player.level,
-                radioButtonLocation: MiuixRadioButtonLocation.end,
-                onClick: () => Navigator.pop(sheetContext, entry.key),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (selected != null && selected != player.level) {
-      await player.setLevel(selected);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          MiuixButton(
-            key: const ValueKey('quality-selector'),
-            onPressed: player.isBuffering
-                ? null
-                : () => _showQualityPicker(context),
-            insideMargin: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 8,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.high_quality_outlined, size: 20),
-                const SizedBox(width: 6),
-                Text(_labels[player.level]!),
-              ],
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 8,
+      children: [
+        MiuixButton(
+          key: const ValueKey('quality-selector'),
+          onPressed: player.isBuffering
+              ? null
+              : () => _showQualityPicker(context, player),
+          insideMargin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.high_quality_outlined, size: 20),
+              const SizedBox(width: 6),
+              Text(_qualityLabels[player.level]!),
+            ],
+          ),
+        ),
+        Tooltip(
+          message: showLyrics ? '显示封面' : '显示歌词',
+          child: MiuixIconButton(
+            key: const ValueKey('lyrics-toggle'),
+            onPressed: onToggleLyrics,
+            child: Icon(
+              showLyrics ? Icons.album_outlined : Icons.lyrics_outlined,
+              color: showLyrics ? colorScheme.primary : null,
             ),
           ),
-          Tooltip(
-            message: showLyrics ? '显示封面' : '显示歌词',
-            child: MiuixIconButton(
-              key: const ValueKey('lyrics-toggle'),
-              onPressed: onToggleLyrics,
-              child: Icon(
-                showLyrics ? Icons.album_outlined : Icons.lyrics_outlined,
-                color: showLyrics ? colorScheme.primary : null,
-              ),
+        ),
+        Tooltip(
+          message: showVolume ? '收起音量' : '调节音量',
+          child: MiuixIconButton(
+            key: const ValueKey('volume-toggle'),
+            onPressed: onToggleVolume,
+            child: Icon(
+              player.volume == 0
+                  ? Icons.volume_off_outlined
+                  : Icons.volume_up_outlined,
+              color: showVolume ? colorScheme.primary : null,
             ),
           ),
-          Tooltip(
-            message: showVolume ? '收起音量' : '调节音量',
-            child: MiuixIconButton(
-              key: const ValueKey('volume-toggle'),
-              onPressed: onToggleVolume,
-              child: Icon(
-                player.volume == 0
-                    ? Icons.volume_off_outlined
-                    : Icons.volume_up_outlined,
-                color: showVolume ? colorScheme.primary : null,
-              ),
-            ),
-          ),
-          if (player.isDownloading)
-            SizedBox(
-              width: 48,
-              height: 48,
-              child: Center(
-                child: SizedBox.square(
-                  dimension: 24,
-                  child: MiuixCircularProgressIndicator(
-                    progress: player.downloadProgress > 0
-                        ? player.downloadProgress
-                        : null,
-                    strokeWidth: 2.5,
-                    size: 24,
-                  ),
-                ),
-              ),
-            )
-          else
-            Tooltip(
-              message: player.isCurrentDownloaded ? '重新导出到下载位置' : '下载当前歌曲',
-              child: MiuixIconButton(
-                onPressed: player.downloadCurrent,
-                child: Icon(
-                  player.isCurrentDownloaded
-                      ? Icons.download_done
-                      : Icons.download_outlined,
-                  color: player.isCurrentDownloaded
-                      ? colorScheme.primary
+        ),
+        if (player.isDownloading)
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: Center(
+              child: SizedBox.square(
+                dimension: 24,
+                child: MiuixCircularProgressIndicator(
+                  progress: player.downloadProgress > 0
+                      ? player.downloadProgress
                       : null,
+                  strokeWidth: 2.5,
+                  size: 24,
                 ),
               ),
             ),
-        ],
-      ),
+          )
+        else
+          Tooltip(
+            message: player.isCurrentDownloaded ? '重新导出到下载位置' : '下载当前歌曲',
+            child: MiuixIconButton(
+              onPressed: player.downloadCurrent,
+              child: Icon(
+                player.isCurrentDownloaded
+                    ? Icons.download_done
+                    : Icons.download_outlined,
+                color: player.isCurrentDownloaded ? colorScheme.primary : null,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -894,7 +960,11 @@ class _PlayButton extends StatelessWidget {
       message: p.isPlaying ? '暂停' : '播放',
       child: MiuixFloatingActionButton(
         onPressed: p.togglePlay,
-        child: Icon(p.isPlaying ? Icons.pause : Icons.play_arrow, size: 40),
+        child: Icon(
+          p.isPlaying ? Icons.pause : Icons.play_arrow,
+          size: 40,
+          color: MiuixTheme.of(context).colors.onPrimary,
+        ),
       ),
     );
   }
