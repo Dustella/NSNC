@@ -134,6 +134,10 @@ class _SearchScreenState extends State<SearchScreen> {
     final recent = prefs?.recentSearches ?? const <String>[];
     final layout =
         prefs?.layoutFor(LayoutSurface.search) ?? CollectionLayout.list;
+    final miuix = MiuixTheme.of(context);
+    final searchTextStyle = Theme.of(
+      context,
+    ).textTheme.bodyMedium!.copyWith(fontSize: 14, fontWeight: FontWeight.w400);
     return MiuixScaffold(
       topBar: MiuixTopAppBar(
         title: '搜索',
@@ -144,32 +148,61 @@ class _SearchScreenState extends State<SearchScreen> {
               Expanded(
                 child: ValueListenableBuilder<TextEditingValue>(
                   valueListenable: _controller,
-                  builder: (context, value, _) => MiuixTextField(
-                    controller: _controller,
+                  builder: (context, value, _) => Semantics(
                     label: '搜索音乐、电台',
-                    useLabelAsPlaceholder: true,
-                    insideMargin: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    // The top bar measures its bottom content once. Reserve
-                    // the action's space so typing cannot change its height.
-                    trailingIcon: SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: value.text.isEmpty
-                          ? null
-                          : Tooltip(
-                              message: '清除搜索',
-                              child: MiuixIconButton(
-                                onPressed: _clear,
-                                child: const Icon(Icons.close_rounded),
+                    child: Stack(
+                      alignment: Alignment.centerLeft,
+                      children: [
+                        MiuixTextField(
+                          controller: _controller,
+                          textStyle: searchTextStyle,
+                          insideMargin: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          // The top bar measures its bottom content once. Reserve
+                          // the action's space so typing cannot change its height.
+                          trailingIcon: SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: value.text.isEmpty
+                                ? null
+                                : Tooltip(
+                                    message: '清除搜索',
+                                    child: MiuixIconButton(
+                                      onPressed: _clear,
+                                      child: const Icon(
+                                        Icons.close_rounded,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                          singleLine: true,
+                          textInputAction: TextInputAction.search,
+                          onSubmitted: _submit,
+                        ),
+                        // Upstream hard-codes its label at 17px independently
+                        // of textStyle. Keep the placeholder in the input style.
+                        if (value.text.isEmpty)
+                          Positioned(
+                            left: 16,
+                            right: 40,
+                            child: IgnorePointer(
+                              child: ExcludeSemantics(
+                                child: Text(
+                                  '搜索音乐、电台',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: searchTextStyle.copyWith(
+                                    color: miuix.colors.onSurfaceVariantSummary,
+                                  ),
+                                ),
                               ),
                             ),
+                          ),
+                      ],
                     ),
-                    singleLine: true,
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: _submit,
                   ),
                 ),
               ),
@@ -178,7 +211,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 message: '搜索',
                 child: MiuixIconButton(
                   onPressed: () => _submit(_controller.text),
-                  child: const Icon(Icons.search_rounded),
+                  child: const Icon(Icons.search_rounded, size: 20),
                 ),
               ),
             ],
@@ -264,11 +297,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       PointerDeviceKind.mouse,
                     },
                   ),
-                  child: MiuixTabRow(
-                    // Leave room for both glyphs and MIUIX's internal padding.
-                    // Narrow windows scroll instead of squeezing labels away.
-                    minWidth: 64,
-                    itemSpacing: 4,
+                  child: MiuixTabRowWithContour(
                     tabs: [for (final c in _Category.values) c.label],
                     selectedTabIndex: _category.index,
                     onTabSelected: (i) => setState(() {

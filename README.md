@@ -50,6 +50,9 @@ The adaptive UI uses MIUIX components on desktop and mobile. Resizing between
 sidebar and bottom navigation preserves page state. Search supports Enter or
 the search button; clearing the field restores history and trending searches.
 Overflowing artwork shelves have a draggable scrollbar for mouse navigation.
+Search, library, and radio filters use MIUIX's grouped `TabRowWithContour`
+variant with 14px labels. Search input and placeholder text also use 14px,
+with smaller icons while retaining their original hit areas.
 
 Release packages (Windows, Linux, macOS, Android) are built by GitHub Actions
 and published on `v*` tags; see [Building and releasing](docs/building-and-releasing.md).

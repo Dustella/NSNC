@@ -102,7 +102,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                    child: MiuixTabRow(
+                    child: MiuixTabRowWithContour(
                       tabs: [for (final f in _Filter.values) f.label],
                       selectedTabIndex: _filter.index,
                       onTabSelected: (i) =>
