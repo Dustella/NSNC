@@ -82,7 +82,7 @@ class _RadioHubScreenState extends State<RadioHubScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: MiuixTabRow(
+            child: MiuixTabRowWithContour(
               tabs: [for (final t in tabs) t.label],
               selectedTabIndex: tabs.indexOf(_tab),
               onTabSelected: (i) => setState(() => _tab = tabs[i]),

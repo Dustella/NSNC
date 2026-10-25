@@ -22,6 +22,8 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
+  // Reparent the same pages when switching between rail and bottom navigation.
+  final _pagesKey = GlobalKey();
 
   static const _destinations = [
     _Dest('发现', Icons.explore_outlined, Icons.explore),
@@ -41,6 +43,7 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 720;
     final body = IndexedStack(
+      key: _pagesKey,
       index: _index,
       children: [
         for (var i = 0; i < _pages.length; i++)
