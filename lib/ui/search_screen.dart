@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_miuix/miuix.dart';
 import 'package:ncm_api/ncm_api.dart';
@@ -67,7 +68,10 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _submit(String raw) {
     final keywords = raw.trim();
-    if (keywords.isEmpty) return;
+    if (keywords.isEmpty) {
+      _clear();
+      return;
+    }
     _controller.text = keywords;
     FocusScope.of(context).unfocus();
     unawaited(_maybePrefs()?.addRecentSearch(keywords));
@@ -138,24 +142,45 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Row(
             children: [
               Expanded(
-                child: MiuixTextField(
-                  controller: _controller,
-                  label: '搜索歌曲、歌手、专辑、电台',
-                  useLabelAsPlaceholder: true,
-                  leadingIcon: const Icon(Icons.search),
-                  singleLine: true,
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: _submit,
-                ),
-              ),
-              if (_keywords.isNotEmpty)
-                Tooltip(
-                  message: '清除',
-                  child: MiuixIconButton(
-                    onPressed: _clear,
-                    child: const Icon(Icons.close_rounded),
+                child: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _controller,
+                  builder: (context, value, _) => MiuixTextField(
+                    controller: _controller,
+                    label: '搜索音乐、电台',
+                    useLabelAsPlaceholder: true,
+                    insideMargin: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    // The top bar measures its bottom content once. Reserve
+                    // the action's space so typing cannot change its height.
+                    trailingIcon: SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: value.text.isEmpty
+                          ? null
+                          : Tooltip(
+                              message: '清除搜索',
+                              child: MiuixIconButton(
+                                onPressed: _clear,
+                                child: const Icon(Icons.close_rounded),
+                              ),
+                            ),
+                    ),
+                    singleLine: true,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: _submit,
                   ),
                 ),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: '搜索',
+                child: MiuixIconButton(
+                  onPressed: () => _submit(_controller.text),
+                  child: const Icon(Icons.search_rounded),
+                ),
+              ),
             ],
           ),
         ),
@@ -228,22 +253,35 @@ class _SearchScreenState extends State<SearchScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 8, 4),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
           child: Row(
             children: [
               Expanded(
-                child: MiuixTabRow(
-                  minWidth: 60,
-                  tabs: [for (final c in _Category.values) c.label],
-                  selectedTabIndex: _category.index,
-                  onTabSelected: (i) => setState(() {
-                    _category = _Category.values[i];
-                    _results = _search(_keywords, _category);
-                  }),
+                child: ScrollConfiguration(
+                  behavior: ScrollConfiguration.of(context).copyWith(
+                    dragDevices: {
+                      ...ScrollConfiguration.of(context).dragDevices,
+                      PointerDeviceKind.mouse,
+                    },
+                  ),
+                  child: MiuixTabRow(
+                    // Leave room for both glyphs and MIUIX's internal padding.
+                    // Narrow windows scroll instead of squeezing labels away.
+                    minWidth: 64,
+                    itemSpacing: 4,
+                    tabs: [for (final c in _Category.values) c.label],
+                    selectedTabIndex: _category.index,
+                    onTabSelected: (i) => setState(() {
+                      _category = _Category.values[i];
+                      _results = _search(_keywords, _category);
+                    }),
+                  ),
                 ),
               ),
-              if (_category != _Category.song)
+              if (_category != _Category.song) ...[
+                const SizedBox(width: 8),
                 const LayoutToggle(surface: LayoutSurface.search),
+              ],
             ],
           ),
         ),

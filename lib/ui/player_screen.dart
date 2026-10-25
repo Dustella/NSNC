@@ -284,34 +284,40 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
       content: (padding) => Padding(
         padding: padding,
-        child: Column(
-          children: [
-            _mediaPanel(track, cs),
-            const SizedBox(height: 16),
-            _TitleRow(track: track),
-            const SizedBox(height: 4),
-            _PlaybackOptions(
-              player: p,
-              showLyrics: _showLyrics,
-              showVolume: _showVolume,
-              onToggleLyrics: _toggleLyrics,
-              onToggleVolume: _toggleVolume,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 448),
+            child: Column(
+              children: [
+                _mediaPanel(track, cs),
+                const SizedBox(height: 16),
+                _TitleRow(track: track),
+                const SizedBox(height: 4),
+                _PlaybackOptions(
+                  player: p,
+                  showLyrics: _showLyrics,
+                  showVolume: _showVolume,
+                  onToggleLyrics: _toggleLyrics,
+                  onToggleVolume: _toggleVolume,
+                ),
+                if (p.lastError != null)
+                  _ErrorBanner(error: p.lastError!, cs: cs),
+                const SizedBox(height: 4),
+                _progressView(p, cs, duration),
+                ClipRect(
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOut,
+                    child: _showVolume
+                        ? _VolumeControl(player: p, cs: cs)
+                        : const SizedBox(width: double.infinity),
+                  ),
+                ),
+                _Controls(p: p, cs: cs, onRepeat: () => _cycleRepeat(p)),
+                const SizedBox(height: 12),
+              ],
             ),
-            if (p.lastError != null) _ErrorBanner(error: p.lastError!, cs: cs),
-            const SizedBox(height: 4),
-            _progressView(p, cs, duration),
-            ClipRect(
-              child: AnimatedSize(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOut,
-                child: _showVolume
-                    ? _VolumeControl(player: p, cs: cs)
-                    : const SizedBox(width: double.infinity),
-              ),
-            ),
-            _Controls(p: p, cs: cs, onRepeat: () => _cycleRepeat(p)),
-            const SizedBox(height: 12),
-          ],
+          ),
         ),
       ),
     );

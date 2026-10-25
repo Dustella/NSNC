@@ -147,6 +147,33 @@ class MediaShelf extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return _MediaShelfViewport(shelf: this);
+  }
+}
+
+class _MediaShelfViewport extends StatefulWidget {
+  const _MediaShelfViewport({required this.shelf});
+
+  final MediaShelf shelf;
+
+  @override
+  State<_MediaShelfViewport> createState() => _MediaShelfViewportState();
+}
+
+class _MediaShelfViewportState extends State<_MediaShelfViewport> {
+  final _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final shelf = widget.shelf;
+    final cardWidth = shelf.cardWidth;
     final scaler = MediaQuery.textScalerOf(context);
     // Cover + gap + two title lines + one subtitle line + padding, scaled
     // with the user's text size so labels never clip.
@@ -157,21 +184,56 @@ class MediaShelf extends StatelessWidget {
         scaler.scale(14) * 1.3 * 2 +
         scaler.scale(12) * 1.45 +
         6;
-    return SizedBox(
-      height: height,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: items.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 4),
-        itemBuilder: (context, i) => SizedBox(
-          width: cardWidth,
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: MediaCard(item: items[i], onTap: () => onTap(items[i])),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final contentWidth =
+            shelf.items.length * cardWidth + (shelf.items.length - 1) * 4 + 24;
+        final overflows = contentWidth > constraints.maxWidth;
+        // Keep the draggable track below the cards, never over their labels.
+        final trackSpace = overflows ? 14.0 : 0.0;
+        final list = ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+          child: ListView.separated(
+            controller: _controller,
+            primary: false,
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.fromLTRB(12, 0, 12, trackSpace),
+            itemCount: shelf.items.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 4),
+            itemBuilder: (context, i) => SizedBox(
+              width: cardWidth,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: MediaCard(
+                  item: shelf.items[i],
+                  onTap: () => shelf.onTap(shelf.items[i]),
+                ),
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+        final colors = Theme.of(context).colorScheme;
+        return SizedBox(
+          height: height + trackSpace,
+          child: overflows
+              ? RawScrollbar(
+                  controller: _controller,
+                  thumbVisibility: true,
+                  trackVisibility: true,
+                  interactive: true,
+                  scrollbarOrientation: ScrollbarOrientation.bottom,
+                  thickness: 6,
+                  radius: const Radius.circular(3),
+                  mainAxisMargin: 12,
+                  crossAxisMargin: 2,
+                  thumbColor: colors.onSurfaceVariant.withValues(alpha: 0.45),
+                  trackColor: colors.onSurfaceVariant.withValues(alpha: 0.08),
+                  trackBorderColor: Colors.transparent,
+                  child: list,
+                )
+              : list,
+        );
+      },
     );
   }
 }
